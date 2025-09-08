@@ -1,412 +1,731 @@
-import sqlite3
-from datetime import datetime, timedelta
-import threading
-import time
-from flask import Flask, render_template_string, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-import os
-
-# إعداد التطبيق
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///delivery_system.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-
-# تعريف نماذج قاعدة البيانات
-class Order(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    order_no = db.Column(db.String(50), unique=True)
-    pos_order_no = db.Column(db.String(50))
-    date = db.Column(db.Date)
-    outlet = db.Column(db.String(50))
-    cus_name = db.Column(db.String(100))
-    cus_phone = db.Column(db.String(20))
-    address = db.Column(db.Text)
-    pay_method = db.Column(db.String(20))
-    order_total = db.Column(db.Float)
-    discount = db.Column(db.Float)
-    order_with_vat = db.Column(db.Float)
-    delivery_fee = db.Column(db.Float)
-    final_total = db.Column(db.Float)
-    agent_name = db.Column(db.String(50))
-    ordered_items = db.Column(db.Text)
-    customer_comments = db.Column(db.Text)
-    recieve_time = db.Column(db.DateTime)
-    prep_time = db.Column(db.Integer)
-    dispatch_time = db.Column(db.DateTime)
-    delivery_time = db.Column(db.DateTime)
-    type = db.Column(db.String(20))
-    expected_delivery_time = db.Column(db.DateTime)
-    delay_minutes = db.Column(db.Integer, default=0)
-    status = db.Column(db.String(20), default='preparing')
-    last_updated = db.Column(db.DateTime, default=datetime.utcnow)
-
-class Incident(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    order_no = db.Column(db.String(50))
-    incident_description = db.Column(db.Text)
-    incident_comments = db.Column(db.Text)
-    resolved = db.Column(db.Boolean, default=False)
-    resolve_by_agent = db.Column(db.String(50))
-    resolve_time = db.Column(db.DateTime)
-
-class Branch(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    outlet_name = db.Column(db.String(50), unique=True)
-    location = db.Column(db.String(100))
-    manager = db.Column(db.String(50))
-    avg_delivery_time = db.Column(db.Integer, default=0)
-
-class Agent(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    agent_name = db.Column(db.String(50), unique=True)
-    outlet_id = db.Column(db.Integer)
-    performance_score = db.Column(db.Integer, default=100)
-    total_orders = db.Column(db.Integer, default=0)
-    resolved_incidents = db.Column(db.Integer, default=0)
-
-# إنشاء قاعدة البيانات
-def init_db():
-    with app.app_context():
-        db.create_all()
-        # إضافة بيانات افتراضية
-        if not Branch.query.first():
-            branches = [
-                Branch(outlet_name="فرع الرياض", location="الرياض", manager="أحمد علي"),
-                Branch(outlet_name="فرع جدة", location="جدة", manager="فاطمة محمد")
-            ]
-            db.session.add_all(branches)
-            
-            agents = [
-                Agent(agent_name="محمد سعود", outlet_id=1),
-                Agent(agent_name="نورا خالد", outlet_id=2)
-            ]
-            db.session.add_all(agents)
-            db.session.commit()
-
-# وظيفة خلفية لتحديث التأخيرات
-def update_delays():
-    while True:
-        with app.app_context():
-            now = datetime.utcnow()
-            orders = Order.query.filter(
-                Order.status != 'delivered',
-                Order.expected_delivery_time < now
-            ).all()
-            
-            for order in orders:
-                delay = int((now - order.expected_delivery_time).total_seconds() / 60)
-                order.delay_minutes = delay
-                if delay > 15:
-                    order.status = 'delayed'
-                db.session.commit()
-        
-        time.sleep(300)  # تحديث كل 5 دقائق
-
-# بدء خلفية التحديث
-delay_thread = threading.Thread(target=update_delays, daemon=True)
-delay_thread.start()
-
-# واجهات API
-@app.route('/')
-def dashboard():
-    return render_template_string(DASHBOARD_HTML)
-
-@app.route('/api/delayed-orders')
-def get_delayed_orders():
-    outlet = request.args.get('outlet')
-    agent = request.args.get('agent')
-    status = request.args.get('status', 'delayed')
-    
-    query = Order.query.filter_by(status=status)
-    if outlet:
-        query = query.filter_by(outlet=outlet)
-    if agent:
-        query = query.filter_by(agent_name=agent)
-    
-    orders = query.all()
-    return jsonify([{
-        'id': o.id,
-        'order_no': o.order_no,
-        'outlet': o.outlet,
-        'agent_name': o.agent_name,
-        'delay_minutes': o.delay_minutes,
-        'cus_name': o.cus_name,
-        'status': o.status,
-        'last_updated': o.last_updated.isoformat()
-    } for o in orders])
-
-@app.route('/api/update-order/<int:order_id>', methods=['POST'])
-def update_order(order_id):
-    order = Order.query.get(order_id)
-    data = request.json
-    order.status = data.get('status', order.status)
-    order.delay_minutes = data.get('delay_minutes', order.delay_minutes)
-    order.last_updated = datetime.utcnow()
-    db.session.commit()
-    return jsonify({'message': 'Order updated successfully'})
-
-@app.route('/api/contact-customer/<int:order_id>', methods=['POST'])
-def contact_customer(order_id):
-    order = Order.query.get(order_id)
-    # هنا يمكن إضافة منطق الاتصال بالعميل
-    incident = Incident(
-        order_no=order.order_no,
-        incident_description=f"Contacted customer for delayed order {order.order_no}",
-        resolve_by_agent=order.agent_name,
-        resolve_time=datetime.utcnow(),
-        resolved=True
-    )
-    db.session.add(incident)
-    db.session.commit()
-    return jsonify({'message': f'Customer contacted: {order.cus_phone}'})
-
-@app.route('/api/branch-performance')
-def branch_performance():
-    branches = Branch.query.all()
-    return jsonify([{
-        'outlet_name': b.outlet_name,
-        'avg_delivery_time': b.avg_delivery_time,
-        'total_agents': Agent.query.filter_by(outlet_id=b.id).count()
-    } for b in branches])
-
-@app.route('/api/agent-performance')
-def agent_performance():
-    agents = Agent.query.all()
-    return jsonify([{
-        'agent_name': a.agent_name,
-        'performance_score': a.performance_score,
-        'resolved_incidents': a.resolved_incidents
-    } for a in agents])
-
-# HTML Template
-DASHBOARD_HTML = '''
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة التحكم - نظام التوصيل</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .delay-high { color: #dc3545; font-weight: bold; }
-        .delay-medium { color: #fd7e14; }
-        .delay-low { color: #198754; }
-        .card { margin-bottom: 20px; }
-        .table th { text-align: center; }
-    </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Order Tracking System</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+<style>
+:root{ --bg:#0b0f14; --muted:#98a0a6; --accent:#7a5aff; --glass:rgba(255,255,255,0.04); --dock:#0d1117; --dock-hover:#161b22; --success:#28a745; --warning:#ffc107; --danger:#dc3545 }
+body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-family:Inter,system-ui,Arial;padding:0;margin:0}
+.glass{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);backdrop-filter:blur(8px);border-radius:12px;padding:16px}
+.metric-value{font-size:1.6rem;font-weight:700;background:linear-gradient(90deg,#7a5aff,#5ef3c8);-webkit-background-clip:text;color:transparent}
+/* Status badges */
+.status-badge{padding:.35rem .6rem;border-radius:999px;font-weight:700;font-size:.8rem}
+.status-new{background:rgba(255,193,7,0.12);color:#ffe0b3}
+.status-ready{background:rgba(40,167,69,0.12);color:#c3e6cb}
+.status-assigned{background:rgba(0,123,255,0.12);color:#b8daff}
+.status-delivered{background:rgba(122,90,255,0.12);color:#dcdfff}
+/* System Dock */
+.dock{position:fixed;bottom:0;left:0;width:100%;height:60px;background:var(--dock);border-top:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;gap:15px;z-index:1000}
+.dock-item{width:45px;height:45px;border-radius:8px;background:var(--dock-hover);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s}
+.dock-item:hover{background:var(--accent);transform:scale(1.1)}
+.dock-item.active{background:var(--accent)}
+.dock-item i{font-size:1.2rem;color:#e9eef3}
+/* Sidebar */
+.sidebar{position:fixed;top:0;left:0;width:350px;height:100%;background:var(--dock);z-index:999;transform:translateX(-100%);transition:transform 0.3s;overflow-y:auto}
+.sidebar.active{transform:translateX(0)}
+.sidebar-header{padding:20px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between}
+.sidebar-content{padding:20px}
+/* Main Content */
+.main-content{padding:20px;padding-bottom:100px}
+/* Order Cards */
+.order-card{margin-bottom:15px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;overflow:hidden;transition:all 0.2s}
+.order-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.order-card-header{padding:12px 15px;background:rgba(255,255,255,0.02);display:flex;justify-content:space-between;align-items:center}
+.order-card-body{padding:15px}
+.order-source{display:inline-block;padding:4px 8px;border-radius:4px;background:rgba(255,255,255,0.1);font-size:.75rem}
+/* Form Styles */
+.form-control, .form-select{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e9eef3}
+.form-control:focus, .form-select:focus{background:rgba(255,255,255,0.08);border-color:var(--accent);color:#e9eef3;box-shadow:0 0 0 0.2rem rgba(122,90,255,0.25)}
+.form-label{color:#98a0a6;font-size:.9rem}
+/* Action Buttons */
+.action-btn{padding:8px 16px;border-radius:6px;margin-right:8px;margin-bottom:8px;display:inline-block;cursor:pointer;transition:all 0.2s}
+.action-btn:hover{transform:scale(1.05)}
+.btn-new{background:rgba(255,193,7,0.2);border:1px solid rgba(255,193,7,0.4);color:#ffe0b3}
+.btn-ready{background:rgba(40,167,69,0.2);border:1px solid rgba(40,167,69,0.4);color:#c3e6cb}
+.btn-assign{background:rgba(0,123,255,0.2);border:1px solid rgba(0,123,255,0.4);color:#b8daff}
+.btn-delivered{background:rgba(122,90,255,0.2);border:1px solid rgba(122,90,255,0.4);color:#dcdfff}
+/* Notification */
+.notification{position:fixed;bottom:80px;right:20px;padding:15px 20px;background:rgba(122,90,255,0.9);color:white;border-radius:8px;transform:translateY(100px);transition:transform 0.3s;z-index:1001}
+.notification.show{transform:translateY(0)}
+/* Filter Tabs */
+.filter-tabs{display:flex;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,0.1)}
+.filter-tab{padding:10px 20px;cursor:pointer;position:relative;color:#98a0a6}
+.filter-tab.active{color:#e9eef3}
+.filter-tab.active::after{content:'';position:absolute;bottom:-1px;left:0;width:100%;height:2px;background:var(--accent)}
+/* Responsive */
+@media (max-width:768px){.sidebar{width:100%}}
+</style>
 </head>
 <body>
-    <div class="container-fluid py-4">
-        <h1 class="mb-4">لوحة التحكم - نظام التوصيل</h1>
-        
-        <!-- الفلاتر -->
-        <div class="card">
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <label for="outlet" class="form-label">الفرع</label>
-                        <select id="outlet" class="form-select">
-                            <option value="">الكل</option>
-                            <option value="فرع الرياض">فرع الرياض</option>
-                            <option value="فرع جدة">فرع جدة</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label for="agent" class="form-label">الوكيل</label>
-                        <select id="agent" class="form-select">
-                            <option value="">الكل</option>
-                            <option value="محمد سعود">محمد سعود</option>
-                            <option value="نورا خالد">نورا خالد</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label for="status" class="form-label">الحالة</label>
-                        <select id="status" class="form-select">
-                            <option value="delayed">متأخر</option>
-                            <option value="preparing">قيد التحضير</option>
-                            <option value="on_way">في الطريق</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <button class="btn btn-primary mt-4" onclick="loadOrders()">تحديث</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- جدول الطلبات المتأخرة -->
-        <div class="card">
-            <div class="card-header">
-                <h3>الطلبات المتأخرة</h3>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped" id="ordersTable">
-                        <thead>
-                            <tr>
-                                <th>رقم الطلب</th>
-                                <th>الفرع</th>
-                                <th>الوكيل</th>
-                                <th>التأخير (دقيقة)</th>
-                                <th>العميل</th>
-                                <th>الحالة</th>
-                                <th>آخر تحديث</th>
-                                <th>إجراءات</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- سيتم تحميل البيانات هنا -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        
-        <!-- لوحة الأداء -->
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>أداء الفروع</h3>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="branchChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>أداء الوكلاء</h3>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="agentChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+<!-- System Dock -->
+<div class="dock">
+  <div class="dock-item active" id="dashboardBtn" title="Dashboard">
+    <i class="bi bi-speedometer2"></i>
+  </div>
+  <div class="dock-item" id="addOrderBtn" title="Add Order">
+    <i class="bi bi-plus-circle"></i>
+  </div>
+  <div class="dock-item" id="driversBtn" title="Drivers">
+    <i class="bi bi-people"></i>
+  </div>
+  <div class="dock-item" id="reportsBtn" title="Reports">
+    <i class="bi bi-graph-up"></i>
+  </div>
+  <div class="dock-item" id="settingsBtn" title="Settings">
+    <i class="bi bi-gear"></i>
+  </div>
+</div>
 
-    <script>
-        // تحميل الطلبات
-        function loadOrders() {
-            const outlet = document.getElementById('outlet').value;
-            const agent = document.getElementById('agent').value;
-            const status = document.getElementById('status').value;
-            
-            const url = `/api/delayed-orders?outlet=${outlet}&agent=${agent}&status=${status}`;
-            
-            fetch(url)
-                .then(response => response.json())
-                .then(data => {
-                    const tbody = document.querySelector('#ordersTable tbody');
-                    tbody.innerHTML = '';
-                    
-                    data.forEach(order => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${order.order_no}</td>
-                            <td>${order.outlet}</td>
-                            <td>${order.agent_name}</td>
-                            <td class="${order.delay_minutes > 30 ? 'delay-high' : order.delay_minutes > 15 ? 'delay-medium' : 'delay-low'}">
-                                ${order.delay_minutes}
-                            </td>
-                            <td>${order.cus_name}</td>
-                            <td>${order.status}</td>
-                            <td>${new Date(order.last_updated).toLocaleString('ar-SA')}</td>
-                            <td>
-                                <button class="btn btn-sm btn-success" onclick="updateOrder(${order.id})">تحديث</button>
-                                <button class="btn btn-sm btn-warning" onclick="contactCustomer(${order.id})">اتصال</button>
-                            </td>
-                        `;
-                        tbody.appendChild(row);
-                    });
-                });
-        }
-        
-        // تحديث حالة الطلب
-        function updateOrder(orderId) {
-            const newStatus = prompt('أدخل الحالة الجديدة (preparing/on_way/delivered):');
-            if (newStatus) {
-                fetch(`/api/update-order/${orderId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: newStatus })
-                })
-                .then(response => response.json())
-                .then(() => loadOrders());
-            }
-        }
-        
-        // الاتصال بالعميل
-        function contactCustomer(orderId) {
-            fetch(`/api/contact-customer/${orderId}`, { method: 'POST' })
-                .then(response => response.json())
-                .then(data => alert(data.message));
-        }
-        
-        // تحميل بيانات الأداء
-        function loadPerformance() {
-            // بيانات الفروع
-            fetch('/api/branch-performance')
-                .then(response => response.json())
-                .then(data => {
-                    const ctx = document.getElementById('branchChart').getContext('2d');
-                    new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.map(b => b.outlet_name),
-                            datasets: [{
-                                label: 'متوسط وقت التوصيل',
-                                data: data.map(b => b.avg_delivery_time),
-                                backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                                borderColor: 'rgba(54, 162, 235, 1)',
-                                borderWidth: 1
-                            }]
-                        },
-                        options: { responsive: true }
-                    });
-                });
-            
-            // بيانات الوكلاء
-            fetch('/api/agent-performance')
-                .then(response => response.json())
-                .then(data => {
-                    const ctx = document.getElementById('agentChart').getContext('2d');
-                    new Chart(ctx, {
-                        type: 'radar',
-                        data: {
-                            labels: data.map(a => a.agent_name),
-                            datasets: [{
-                                label: 'نسبة الأداء',
-                                data: data.map(a => a.performance_score),
-                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                                borderColor: 'rgba(255, 99, 132, 1)',
-                                borderWidth: 1
-                            }]
-                        },
-                        options: { responsive: true }
-                    });
-                });
-        }
-        
-        // تحميل البيانات عند فتح الصفحة
-        window.onload = () => {
-            loadOrders();
-            loadPerformance();
-            
-            // تحديث تلقائي كل 30 ثانية
-            setInterval(loadOrders, 30000);
-        };
-    </script>
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h5 id="sidebarTitle">Add New Order</h5>
+    <button class="btn btn-sm btn-link text-light" id="closeSidebar">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+  <div class="sidebar-content">
+    <form id="orderForm">
+      <div class="mb-3">
+        <label class="form-label">Order Source</label>
+        <select class="form-select" id="orderSource" required>
+          <option value="">Select Source</option>
+          <option value="Call Center">Call Center</option>
+          <option value="E-commerce">E-commerce</option>
+          <option value="Mobile App">Mobile App</option>
+        </select>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label">Customer Name</label>
+        <input type="text" class="form-control" id="customerName" required>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label">Phone Number</label>
+        <input type="tel" class="form-control" id="customerPhone" required>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label">Delivery Address</label>
+        <textarea class="form-control" id="deliveryAddress" rows="2" required></textarea>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label">Branch</label>
+        <select class="form-select" id="orderBranch" required>
+          <option value="">Select Branch</option>
+          <option value="Downtown">Downtown</option>
+          <option value="Mall">Mall</option>
+          <option value="Airport">Airport</option>
+          <option value="City Center">City Center</option>
+        </select>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label">Items</label>
+        <textarea class="form-control" id="orderItems" rows="2" required></textarea>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label">Amount (AED)</label>
+        <input type="number" class="form-control" id="orderAmount" step="0.01" required>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label">Notes</label>
+        <textarea class="form-control" id="orderNotes" rows="2"></textarea>
+      </div>
+      
+      <button type="submit" class="btn btn-primary w-100">Add Order</button>
+    </form>
+  </div>
+</div>
+
+<!-- Main Dashboard Content -->
+<div class="main-content">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <button class="btn btn-sm btn-outline-light d-md-none" id="mobileMenuBtn">
+      <i class="bi bi-list"></i>
+    </button>
+    <h3>Order Tracking System</h3>
+    <div class="ms-auto d-none d-md-flex">
+      <button class="btn btn-sm btn-outline-light" id="refreshBtn">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </button>
+    </div>
+  </div>
+  
+  <!-- Stats Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="glass">
+        <div class="text-muted">New Orders</div>
+        <div id="statNew" class="metric-value">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="glass">
+        <div class="text-muted">Ready Orders</div>
+        <div id="statReady" class="metric-value">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="glass">
+        <div class="text-muted">Assigned Orders</div>
+        <div id="statAssigned" class="metric-value">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="glass">
+        <div class="text-muted">Delivered Orders</div>
+        <div id="statDelivered" class="metric-value">0</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Filter Tabs -->
+  <div class="filter-tabs">
+    <div class="filter-tab active" data-filter="all">All Orders</div>
+    <div class="filter-tab" data-filter="new">New Orders</div>
+    <div class="filter-tab" data-filter="ready">Ready Orders</div>
+    <div class="filter-tab" data-filter="assigned">Assigned Orders</div>
+    <div class="filter-tab" data-filter="delivered">Delivered Orders</div>
+  </div>
+  
+  <!-- Search Bar -->
+  <div class="glass mb-4">
+    <div class="input-group">
+      <input type="text" class="form-control" id="searchInput" placeholder="Search by order number, customer, or phone...">
+      <button class="btn btn-outline-light" type="button" id="searchBtn">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </div>
+  
+  <!-- Orders Container -->
+  <div id="ordersContainer">
+    <!-- Orders will be dynamically loaded here -->
+  </div>
+</div>
+
+<!-- Notification -->
+<div class="notification" id="notification"></div>
+
+<!-- Driver Assignment Modal -->
+<div class="modal fade" id="assignModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="background:var(--bg);color:#e9eef3;border:1px solid rgba(255,255,255,0.1)">
+      <div class="modal-header">
+        <h5 class="modal-title">Assign Driver</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="assignForm">
+          <input type="hidden" id="assignOrderId">
+          <div class="mb-3">
+            <label class="form-label">Select Driver</label>
+            <select class="form-select" id="assignDriver" required>
+              <option value="">Choose a driver...</option>
+              <option value="Ahmed">Ahmed</option>
+              <option value="Fatima">Fatima</option>
+              <option value="Khalid">Khalid</option>
+              <option value="Sara">Sara</option>
+              <option value="Mohammed">Mohammed</option>
+              <option value="Aisha">Aisha</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" id="assignNotes" rows="2"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmAssign">Assign Driver</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Order Management System
+const ORDER_STATES = {
+  NEW: 'New',
+  READY: 'Ready',
+  ASSIGNED: 'Assigned',
+  DELIVERED: 'Delivered'
+};
+
+// Initialize data
+let orders = [];
+let currentFilter = 'all';
+let searchTerm = '';
+
+// Sample data
+const sampleOrders = [
+  {
+    "id": "ABC12345",
+    "order_number": "ORD-10001",
+    "source": "Call Center",
+    "customer_name": "John Smith",
+    "phone": "0501234567",
+    "address": "123 Dubai Street, Dubai",
+    "branch": "Downtown",
+    "items": "2x Pizza, 1x Burger",
+    "amount": 85.50,
+    "status": "New",
+    "driver": "",
+    "notes": "Customer requested extra cheese",
+    "created_at": "2025-09-08T10:30:00.000Z",
+    "updated_at": "2025-09-08T10:30:00.000Z",
+    "prepared_at": "",
+    "assigned_at": "",
+    "delivered_at": ""
+  },
+  {
+    "id": "DEF67890",
+    "order_number": "ORD-10002",
+    "source": "Mobile App",
+    "customer_name": "Sarah Johnson",
+    "phone": "0502345678",
+    "address": "456 Mall Road, Dubai",
+    "branch": "Mall",
+    "items": "1x Salad, 3x Wings",
+    "amount": 65.00,
+    "status": "Ready",
+    "driver": "",
+    "notes": "Delivery to office",
+    "created_at": "2025-09-08T10:15:00.000Z",
+    "updated_at": "2025-09-08T10:15:00.000Z",
+    "prepared_at": "2025-09-08T10:45:00.000Z",
+    "assigned_at": "",
+    "delivered_at": ""
+  },
+  {
+    "id": "GHI11111",
+    "order_number": "ORD-10003",
+    "source": "E-commerce",
+    "customer_name": "Ahmed Hassan",
+    "phone": "0503456789",
+    "address": "789 Airport Ave, Dubai",
+    "branch": "Airport",
+    "items": "4x Burger Meal",
+    "amount": 120.00,
+    "status": "Assigned",
+    "driver": "Ahmed",
+    "notes": "Large order, needs 2 bags",
+    "created_at": "2025-09-08T09:45:00.000Z",
+    "updated_at": "2025-09-08T10:20:00.000Z",
+    "prepared_at": "2025-09-08T10:00:00.000Z",
+    "assigned_at": "2025-09-08T10:20:00.000Z",
+    "delivered_at": ""
+  },
+  {
+    "id": "JKL22222",
+    "order_number": "ORD-10004",
+    "source": "Call Center",
+    "customer_name": "Fatima Ali",
+    "phone": "0504567890",
+    "address": "321 City Center, Dubai",
+    "branch": "City Center",
+    "items": "1x Pizza",
+    "amount": 45.00,
+    "status": "Delivered",
+    "driver": "Sara",
+    "notes": "Customer very satisfied",
+    "created_at": "2025-09-08T08:30:00.000Z",
+    "updated_at": "2025-09-08T11:00:00.000Z",
+    "prepared_at": "2025-09-08T08:45:00.000Z",
+    "assigned_at": "2025-09-08T09:00:00.000Z",
+    "delivered_at": "2025-09-08T11:00:00.000Z"
+  }
+];
+
+// Load sample data
+function loadSampleData() {
+  orders = sampleOrders.map(order => ({
+    ...order,
+    id: order.id || generateOrderId(),
+    status: order.status || ORDER_STATES.NEW
+  }));
+  saveToLocalStorage();
+  renderOrders();
+  updateStats();
+}
+
+// Generate order ID
+function generateOrderId() {
+  return 'ORD-' + Math.floor(100000 + Math.random() * 900000);
+}
+
+// Save to localStorage
+function saveToLocalStorage() {
+  localStorage.setItem('orderTrackingData', JSON.stringify(orders));
+}
+
+// Load from localStorage
+function loadFromLocalStorage() {
+  const savedData = localStorage.getItem('orderTrackingData');
+  if (savedData) {
+    orders = JSON.parse(savedData);
+  } else {
+    loadSampleData();
+  }
+}
+
+// Show notification
+function showNotification(message, duration = 3000) {
+  const notification = document.getElementById('notification');
+  notification.textContent = message;
+  notification.classList.add('show');
+  setTimeout(() => {
+    notification.classList.remove('show');
+  }, duration);
+}
+
+// Update statistics
+function updateStats() {
+  const stats = {
+    new: orders.filter(o => o.status === ORDER_STATES.NEW).length,
+    ready: orders.filter(o => o.status === ORDER_STATES.READY).length,
+    assigned: orders.filter(o => o.status === ORDER_STATES.ASSIGNED).length,
+    delivered: orders.filter(o => o.status === ORDER_STATES.DELIVERED).length
+  };
+  
+  document.getElementById('statNew').textContent = stats.new;
+  document.getElementById('statReady').textContent = stats.ready;
+  document.getElementById('statAssigned').textContent = stats.assigned;
+  document.getElementById('statDelivered').textContent = stats.delivered;
+}
+
+// Format date
+function formatDate(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+// Render orders
+function renderOrders() {
+  const container = document.getElementById('ordersContainer');
+  container.innerHTML = '';
+  
+  let filteredOrders = orders;
+  
+  // Apply status filter
+  if (currentFilter !== 'all') {
+    filteredOrders = filteredOrders.filter(order => order.status === currentFilter);
+  }
+  
+  // Apply search filter
+  if (searchTerm) {
+    filteredOrders = filteredOrders.filter(order => 
+      order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.phone.includes(searchTerm)
+    );
+  }
+  
+  // Sort by created_at (newest first)
+  filteredOrders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  
+  filteredOrders.forEach(order => {
+    const orderCard = document.createElement('div');
+    orderCard.className = 'order-card';
+    orderCard.innerHTML = `
+      <div class="order-card-header">
+        <div>
+          <span class="order-source">${order.source}</span>
+          <span class="status-badge status-${order.status.toLowerCase()}">${order.status}</span>
+        </div>
+        <div class="text-muted small">#${order.order_number}</div>
+      </div>
+      <div class="order-card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <p><strong>Customer:</strong> ${order.customer_name}</p>
+            <p><strong>Phone:</strong> ${order.phone}</p>
+            <p><strong>Address:</strong> ${order.address}</p>
+          </div>
+          <div class="col-md-6">
+            <p><strong>Branch:</strong> ${order.branch}</p>
+            <p><strong>Items:</strong> ${order.items}</p>
+            <p><strong>Amount:</strong> AED ${order.amount.toFixed(2)}</p>
+            ${order.driver ? `<p><strong>Driver:</strong> ${order.driver}</p>` : ''}
+          </div>
+        </div>
+        <div class="mt-3">
+          <p class="text-muted small mb-2">Notes: ${order.notes}</p>
+          <div class="d-flex flex-wrap">
+            ${getActionButtons(order)}
+          </div>
+        </div>
+        <div class="mt-2 text-muted small">
+          <p>Created: ${formatDate(order.created_at)}</p>
+          ${order.prepared_at ? `<p>Prepared: ${formatDate(order.prepared_at)}</p>` : ''}
+          ${order.assigned_at ? `<p>Assigned: ${formatDate(order.assigned_at)}</p>` : ''}
+          ${order.delivered_at ? `<p>Delivered: ${formatDate(order.delivered_at)}</p>` : ''}
+        </div>
+      </div>
+    `;
+    container.appendChild(orderCard);
+  });
+}
+
+// Get action buttons based on order status
+function getActionButtons(order) {
+  let buttons = '';
+  
+  if (order.status === ORDER_STATES.NEW) {
+    buttons += `<button class="action-btn btn-ready" onclick="markReady('${order.id}')">
+      <i class="bi bi-check-circle"></i> Mark Ready
+    </button>`;
+  }
+  
+  if (order.status === ORDER_STATES.READY) {
+    buttons += `<button class="action-btn btn-assign" onclick="openAssignModal('${order.id}')">
+      <i class="bi bi-person-plus"></i> Assign Driver
+    </button>`;
+  }
+  
+  if (order.status === ORDER_STATES.ASSIGNED) {
+    buttons += `<button class="action-btn btn-delivered" onclick="markDelivered('${order.id}')">
+      <i class="bi bi-check-circle-fill"></i> Mark Delivered
+    </button>`;
+  }
+  
+  buttons += `<button class="action-btn" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2)" 
+    onclick="viewOrderDetails('${order.id}')">
+    <i class="bi bi-info-circle"></i> Details
+  </button>`;
+  
+  return buttons;
+}
+
+// Mark order as ready
+function markReady(orderId) {
+  const order = orders.find(o => o.id === orderId);
+  if (order) {
+    order.status = ORDER_STATES.READY;
+    order.prepared_at = new Date().toISOString();
+    order.updated_at = new Date().toISOString();
+    saveToLocalStorage();
+    renderOrders();
+    updateStats();
+    showNotification('Order marked as ready!');
+  }
+}
+
+// Open assign modal
+function openAssignModal(orderId) {
+  const order = orders.find(o => o.id === orderId);
+  if (order) {
+    document.getElementById('assignOrderId').value = orderId;
+    document.getElementById('assignDriver').value = '';
+    document.getElementById('assignNotes').value = '';
+    const modal = new bootstrap.Modal(document.getElementById('assignModal'));
+    modal.show();
+  }
+}
+
+// Confirm driver assignment
+document.getElementById('confirmAssign').addEventListener('click', function() {
+  const orderId = document.getElementById('assignOrderId').value;
+  const driver = document.getElementById('assignDriver').value;
+  const notes = document.getElementById('assignNotes').value;
+  
+  const order = orders.find(o => o.id === orderId);
+  if (order && driver) {
+    order.status = ORDER_STATES.ASSIGNED;
+    order.driver = driver;
+    order.assigned_at = new Date().toISOString();
+    order.updated_at = new Date().toISOString();
+    order.notes = notes;
+    
+    saveToLocalStorage();
+    renderOrders();
+    updateStats();
+    
+    bootstrap.Modal.getInstance(document.getElementById('assignModal')).hide();
+    showNotification(`Order assigned to ${driver}!`);
+  }
+});
+
+// Mark order as delivered
+function markDelivered(orderId) {
+  const order = orders.find(o => o.id === orderId);
+  if (order) {
+    order.status = ORDER_STATES.DELIVERED;
+    order.delivered_at = new Date().toISOString();
+    order.updated_at = new Date().toISOString();
+    saveToLocalStorage();
+    renderOrders();
+    updateStats();
+    showNotification('Order marked as delivered!');
+  }
+}
+
+// View order details
+function viewOrderDetails(orderId) {
+  const order = orders.find(o => o.id === orderId);
+  if (order) {
+    alert(`Order Details:\n\n` +
+          `Order Number: ${order.order_number}\n` +
+          `Source: ${order.source}\n` +
+          `Customer: ${order.customer_name}\n` +
+          `Phone: ${order.phone}\n` +
+          `Address: ${order.address}\n` +
+          `Branch: ${order.branch}\n` +
+          `Items: ${order.items}\n` +
+          `Amount: AED ${order.amount.toFixed(2)}\n` +
+          `Status: ${order.status}\n` +
+          `Driver: ${order.driver || 'Not assigned'}\n` +
+          `Notes: ${order.notes}\n` +
+          `Created: ${formatDate(order.created_at)}\n` +
+          `Prepared: ${formatDate(order.prepared_at)}\n` +
+          `Assigned: ${formatDate(order.assigned_at)}\n` +
+          `Delivered: ${formatDate(order.delivered_at)}`);
+  }
+}
+
+// Handle order form submission
+document.getElementById('orderForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  const newOrder = {
+    id: generateOrderId(),
+    order_number: document.getElementById('customerName').value.substring(0,3).toUpperCase() + '-' + Math.floor(1000 + Math.random() * 9000),
+    source: document.getElementById('orderSource').value,
+    customer_name: document.getElementById('customerName').value,
+    phone: document.getElementById('customerPhone').value,
+    address: document.getElementById('deliveryAddress').value,
+    branch: document.getElementById('orderBranch').value,
+    items: document.getElementById('orderItems').value,
+    amount: parseFloat(document.getElementById('orderAmount').value),
+    status: ORDER_STATES.NEW,
+    driver: '',
+    notes: document.getElementById('orderNotes').value,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    prepared_at: '',
+    assigned_at: '',
+    delivered_at: ''
+  };
+  
+  orders.push(newOrder);
+  saveToLocalStorage();
+  renderOrders();
+  updateStats();
+  
+  // Reset form
+  document.getElementById('orderForm').reset();
+  
+  // Close sidebar
+  document.getElementById('sidebar').classList.remove('active');
+  
+  showNotification('New order added successfully!');
+});
+
+// Handle filter tabs
+document.querySelectorAll('.filter-tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    this.classList.add('active');
+    currentFilter = this.dataset.filter;
+    renderOrders();
+  });
+});
+
+// Handle search
+document.getElementById('searchInput').addEventListener('input', function() {
+  searchTerm = this.value;
+  renderOrders();
+});
+
+document.getElementById('searchBtn').addEventListener('click', function() {
+  searchTerm = document.getElementById('searchInput').value;
+  renderOrders();
+});
+
+// Handle dock items
+document.getElementById('dashboardBtn').addEventListener('click', function() {
+  this.classList.add('active');
+  document.getElementById('addOrderBtn').classList.remove('active');
+  document.getElementById('driversBtn').classList.remove('active');
+  document.getElementById('reportsBtn').classList.remove('active');
+  document.getElementById('settingsBtn').classList.remove('active');
+});
+
+document.getElementById('addOrderBtn').addEventListener('click', function() {
+  this.classList.add('active');
+  document.getElementById('dashboardBtn').classList.remove('active');
+  document.getElementById('driversBtn').classList.remove('active');
+  document.getElementById('reportsBtn').classList.remove('active');
+  document.getElementById('settingsBtn').classList.remove('active');
+  document.getElementById('sidebar').classList.add('active');
+});
+
+document.getElementById('driversBtn').addEventListener('click', function() {
+  this.classList.add('active');
+  document.getElementById('dashboardBtn').classList.remove('active');
+  document.getElementById('addOrderBtn').classList.remove('active');
+  document.getElementById('reportsBtn').classList.remove('active');
+  document.getElementById('settingsBtn').classList.remove('active');
+  showNotification('Driver management coming soon!');
+});
+
+document.getElementById('reportsBtn').addEventListener('click', function() {
+  this.classList.add('active');
+  document.getElementById('dashboardBtn').classList.remove('active');
+  document.getElementById('addOrderBtn').classList.remove('active');
+  document.getElementById('driversBtn').classList.remove('active');
+  document.getElementById('settingsBtn').classList.remove('active');
+  showNotification('Reports coming soon!');
+});
+
+document.getElementById('settingsBtn').addEventListener('click', function() {
+  this.classList.add('active');
+  document.getElementById('dashboardBtn').classList.remove('active');
+  document.getElementById('addOrderBtn').classList.remove('active');
+  document.getElementById('driversBtn').classList.remove('active');
+  document.getElementById('reportsBtn').classList.remove('active');
+  showNotification('Settings coming soon!');
+});
+
+// Handle sidebar close
+document.getElementById('closeSidebar').addEventListener('click', function() {
+  document.getElementById('sidebar').classList.remove('active');
+});
+
+document.getElementById('mobileMenuBtn').addEventListener('click', function() {
+  document.getElementById('sidebar').classList.add('active');
+});
+
+// Handle refresh
+document.getElementById('refreshBtn').addEventListener('click', function() {
+  renderOrders();
+  updateStats();
+  showNotification('Data refreshed!');
+});
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', function() {
+  loadFromLocalStorage();
+  renderOrders();
+  updateStats();
+});
+</script>
 </body>
 </html>
-'''
-
-# تشغيل التطبيق
-if __name__ == '__main__':
-    init_db()
-    app.run(debug=True, host='0.0.0.0', port=5000)
