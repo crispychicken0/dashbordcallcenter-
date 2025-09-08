@@ -319,6 +319,7 @@
             position: sticky;
             top: 0;
             z-index: 10;
+            white-space: nowrap;
         }
         
         .custom-table tbody tr {
@@ -335,6 +336,12 @@
         .custom-table td {
             padding: 12px 15px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
+            white-space: nowrap;
+        }
+        
+        .table-responsive {
+            overflow-x: auto;
+            max-width: 100%;
         }
         
         /* Search Bar */
@@ -700,6 +707,32 @@
             font-size: 0.8rem;
             color: rgba(255, 255, 255, 0.5);
         }
+        
+        /* Column visibility toggle */
+        .column-visibility {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .column-toggle {
+            display: flex;
+            align-items: center;
+            padding: 5px 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .column-toggle:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .column-toggle input {
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
@@ -1034,6 +1067,15 @@
                         </select>
                     </div>
                 </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <h5 class="mb-3">Column Visibility</h5>
+                        <div class="column-visibility" id="columnVisibility">
+                            <!-- Column toggles will be dynamically added here -->
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <!-- Orders Table -->
@@ -1043,19 +1085,29 @@
                     <table class="custom-table" id="ordersTable">
                         <thead>
                             <tr>
-                                <th>Branch</th>
-                                <th>Order No</th>
-                                <th>Date & Time</th>
+                                <th>Order no</th>
+                                <th>pos Order no</th>
+                                <th>Date</th>
+                                <th>Outlet</th>
+                                <th>Cus Name</th>
+                                <th>Cus Phone</th>
+                                <th>Address</th>
+                                <th>Pay Method</th>
+                                <th>Final Total</th>
                                 <th>Agent Name</th>
+                                <th>Ordered Item</th>
+                                <th>Customer Recieve Tm</th>
+                                <th>Prep Time</th>
+                                <th>Dispatch Time</th>
+                                <th>Delivery Tm</th>
                                 <th>Type</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                                <th>Void Reason</th>
+                                <th>Incident ID</th>
+                                <th>Incident De</th>
                             </tr>
                         </thead>
                         <tbody id="ordersTableBody">
                             <tr>
-                                <td colspan="8" class="text-center">No data available. Please upload an Excel file.</td>
+                                <td colspan="18" class="text-center">No data available. Please upload an Excel file.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1249,6 +1301,7 @@
         let ordersData = [];
         let filteredData = [];
         let charts = {};
+        let visibleColumns = {};
         
         // DOM elements
         const fileUpload = document.getElementById('fileUpload');
@@ -1267,6 +1320,7 @@
         const sidebar = document.getElementById('sidebar');
         const sidebarMenu = document.querySelectorAll('.sidebar-menu a');
         const tabContents = document.querySelectorAll('.tab-content');
+        const columnVisibility = document.getElementById('columnVisibility');
         
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -1343,44 +1397,648 @@
         // Load sample data for demonstration
         function loadSampleData() {
             const sampleData = [
-                { branch: 'Hamdan', orderNo: '44078', dateTime: '2025-09-07T20:50:14', agentName: 'SALEH EMAD', type: 'Delivery', amount: 21, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44079', dateTime: '2025-09-07T20:38:00', agentName: 'SALEH EMAD', type: 'Delivery', amount: 21, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44080', dateTime: '2025-09-07T20:34:04', agentName: 'SALEH EMAD', type: 'Delivery', amount: 56, status: 'active', voidReason: '' },
-                { branch: 'Barsha', orderNo: '44081', dateTime: '2025-09-07T20:21:15', agentName: 'SALEH EMAD', type: 'Delivery', amount: 74, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44082', dateTime: '2025-09-07T19:19:50', agentName: 'SALEH EMAD', type: 'Delivery', amount: 33, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44083', dateTime: '2025-09-07T19:19:45', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 53, status: 'active', voidReason: '' },
-                { branch: 'Shabiya', orderNo: '44084', dateTime: '2025-09-07T19:31:34', agentName: 'SALEH EMAD', type: 'Delivery', amount: 21, status: 'active', voidReason: '' },
-                { branch: 'Shabiya', orderNo: '44085', dateTime: '2025-09-07T19:29:34', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 37, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44086', dateTime: '2025-09-07T19:19:48', agentName: 'BHAWNA SHARMA', type: 'Pickup', amount: 20, status: 'active', voidReason: '' },
-                { branch: 'Khalidiyah', orderNo: '44087', dateTime: '2025-09-07T19:09:23', agentName: 'SALEH EMAD', type: 'Delivery', amount: 226, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44088', dateTime: '2025-09-07T19:07:51', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 74, status: 'late', voidReason: '' },
-                { branch: 'Khalidiyah', orderNo: '44089', dateTime: '2025-09-07T18:56:24', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 23, status: 'active', voidReason: '' },
-                { branch: 'Satwa', orderNo: '44090', dateTime: '2025-09-07T18:48:52', agentName: 'SALEH EMAD', type: 'Delivery', amount: 142, status: 'active', voidReason: '' },
-                { branch: 'Muroor', orderNo: '44091', dateTime: '2025-09-07T18:37:16', agentName: 'BHAWNA SHARMA', type: 'Pickup', amount: 16, status: 'active', voidReason: '' },
-                { branch: 'Shabiya', orderNo: '44092', dateTime: '2025-09-07T18:24:34', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 52, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44093', dateTime: '2025-09-07T18:14:53', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 21, status: 'active', voidReason: '' },
-                { branch: 'Muroor', orderNo: '44094', dateTime: '2025-09-07T18:09:22', agentName: 'SALEH EMAD', type: 'Delivery', amount: 52, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44095', dateTime: '2025-09-07T18:06:53', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 94, status: 'active', voidReason: '' },
-                { branch: 'Barsha', orderNo: '44096', dateTime: '2025-09-07T18:04:57', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 21, status: 'active', voidReason: '' },
-                { branch: 'Muroor', orderNo: '44097', dateTime: '2025-09-07T18:02:17', agentName: 'SALEH EMAD', type: 'Delivery', amount: 130, status: 'active', voidReason: '' },
-                { branch: 'Muroor', orderNo: '44098', dateTime: '2025-09-07T17:55:22', agentName: 'SALEH EMAD', type: 'Delivery', amount: 100, status: 'active', voidReason: '' },
-                { branch: 'Khalidiyah', orderNo: '44099', dateTime: '2025-09-07T17:47:23', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 29, status: 'active', voidReason: '' },
-                { branch: 'Muroor', orderNo: '44100', dateTime: '2025-09-07T17:45:22', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 25, status: 'active', voidReason: '' },
-                { branch: 'Hamdan', orderNo: '44169', dateTime: '2025-09-07T13:48:32', agentName: 'manju ranabhat', type: 'Delivery', amount: 37, status: 'void', voidReason: 'void by rest' },
-                { branch: 'Shabiya', orderNo: '44170', dateTime: '2025-09-07T13:47:53', agentName: 'manju ranabhat', type: 'Delivery', amount: 37, status: 'void', voidReason: 'void by agent' },
-                { branch: 'Khalidiyah', orderNo: '44173', dateTime: '2025-09-07T13:46:24', agentName: 'BHAWNA SHARMA', type: 'Delivery', amount: 32, status: 'void', voidReason: 'void by customer' },
-                { branch: 'Shabiya', orderNo: '44208', dateTime: '2025-09-07T11:48:29', agentName: 'manju ranabhat', type: 'Delivery', amount: 62, status: 'void', voidReason: 'void by rest' },
-                { branch: 'Khalidiyah', orderNo: '44281', dateTime: '2025-09-07T07:27:34', agentName: 'Ann Arielle David', type: 'Delivery', amount: 41, status: 'void', voidReason: 'void by rest' }
+                {
+                    orderNo: '44078',
+                    posOrderNo: 'POS78',
+                    date: '2025-09-07T20:50:14',
+                    outlet: 'Hamdan',
+                    cusName: 'John Doe',
+                    cusPhone: '+97112345678',
+                    address: '123 Main St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 21,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Pizza, Soda',
+                    customerRecieveTm: '2025-09-07T21:05:00',
+                    prepTime: '15 min',
+                    dispatchTime: '2025-09-07T20:55:00',
+                    deliveryTm: '2025-09-07T21:05:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44079',
+                    posOrderNo: 'POS79',
+                    date: '2025-09-07T20:38:00',
+                    outlet: 'Hamdan',
+                    cusName: 'Jane Smith',
+                    cusPhone: '+97187654321',
+                    address: '456 Oak St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 21,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Burger, Fries',
+                    customerRecieveTm: '2025-09-07T20:55:00',
+                    prepTime: '12 min',
+                    dispatchTime: '2025-09-07T20:45:00',
+                    deliveryTm: '2025-09-07T20:55:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44080',
+                    posOrderNo: 'POS80',
+                    date: '2025-09-07T20:34:04',
+                    outlet: 'Hamdan',
+                    cusName: 'Robert Johnson',
+                    cusPhone: '+97111223344',
+                    address: '789 Pine St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 56,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Pasta, Salad, Water',
+                    customerRecieveTm: '2025-09-07T20:55:00',
+                    prepTime: '18 min',
+                    dispatchTime: '2025-09-07T20:48:00',
+                    deliveryTm: '2025-09-07T20:55:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44081',
+                    posOrderNo: 'POS81',
+                    date: '2025-09-07T20:21:15',
+                    outlet: 'Barsha',
+                    cusName: 'Emily Davis',
+                    cusPhone: '+97199887766',
+                    address: '101 Maple St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 74,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Steak, Wine',
+                    customerRecieveTm: '2025-09-07T20:55:00',
+                    prepTime: '25 min',
+                    dispatchTime: '2025-09-07T20:45:00',
+                    deliveryTm: '2025-09-07T20:55:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44082',
+                    posOrderNo: 'POS82',
+                    date: '2025-09-07T19:19:50',
+                    outlet: 'Hamdan',
+                    cusName: 'Michael Wilson',
+                    cusPhone: '+97155443322',
+                    address: '202 Cedar St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 33,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Sandwich, Chips',
+                    customerRecieveTm: '2025-09-07T19:40:00',
+                    prepTime: '10 min',
+                    dispatchTime: '2025-09-07T19:25:00',
+                    deliveryTm: '2025-09-07T19:40:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44083',
+                    posOrderNo: 'POS83',
+                    date: '2025-09-07T19:19:45',
+                    outlet: 'Hamdan',
+                    cusName: 'Sarah Brown',
+                    cusPhone: '+97166778899',
+                    address: '303 Birch St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 53,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Chicken, Rice',
+                    customerRecieveTm: '2025-09-07T19:45:00',
+                    prepTime: '20 min',
+                    dispatchTime: '2025-09-07T19:35:00',
+                    deliveryTm: '2025-09-07T19:45:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44084',
+                    posOrderNo: 'POS84',
+                    date: '2025-09-07T19:31:34',
+                    outlet: 'Shabiya',
+                    cusName: 'David Miller',
+                    cusPhone: '+97133445566',
+                    address: '404 Elm St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 21,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Taco, Soda',
+                    customerRecieveTm: '2025-09-07T19:50:00',
+                    prepTime: '12 min',
+                    dispatchTime: '2025-09-07T19:40:00',
+                    deliveryTm: '2025-09-07T19:50:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44085',
+                    posOrderNo: 'POS85',
+                    date: '2025-09-07T19:29:34',
+                    outlet: 'Shabiya',
+                    cusName: 'Lisa Taylor',
+                    cusPhone: '+97177889900',
+                    address: '505 Oak St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 37,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Salad, Soup',
+                    customerRecieveTm: '2025-09-07T19:50:00',
+                    prepTime: '15 min',
+                    dispatchTime: '2025-09-07T19:40:00',
+                    deliveryTm: '2025-09-07T19:50:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44086',
+                    posOrderNo: 'POS86',
+                    date: '2025-09-07T19:19:48',
+                    outlet: 'Hamdan',
+                    cusName: 'James Anderson',
+                    cusPhone: '+97199001122',
+                    address: '606 Pine St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 20,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Coffee, Pastry',
+                    customerRecieveTm: '2025-09-07T19:30:00',
+                    prepTime: '8 min',
+                    dispatchTime: 'N/A',
+                    deliveryTm: 'N/A',
+                    type: 'Pickup',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44087',
+                    posOrderNo: 'POS87',
+                    date: '2025-09-07T19:09:23',
+                    outlet: 'Khalidiyah',
+                    cusName: 'Jennifer Thomas',
+                    cusPhone: '+97144556677',
+                    address: '707 Maple St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 226,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Seafood Platter, Wine',
+                    customerRecieveTm: '2025-09-07T19:45:00',
+                    prepTime: '30 min',
+                    dispatchTime: '2025-09-07T19:35:00',
+                    deliveryTm: '2025-09-07T19:45:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44088',
+                    posOrderNo: 'POS88',
+                    date: '2025-09-07T19:07:51',
+                    outlet: 'Hamdan',
+                    cusName: 'William Jackson',
+                    cusPhone: '+97188990011',
+                    address: '808 Cedar St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 74,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Pizza, Garlic Bread',
+                    customerRecieveTm: '2025-09-07T19:45:00',
+                    prepTime: '25 min',
+                    dispatchTime: '2025-09-07T19:30:00',
+                    deliveryTm: '2025-09-07T19:45:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: '',
+                    status: 'late'
+                },
+                {
+                    orderNo: '44089',
+                    posOrderNo: 'POS89',
+                    date: '2025-09-07T18:56:24',
+                    outlet: 'Khalidiyah',
+                    cusName: 'Patricia White',
+                    cusPhone: '+97166778899',
+                    address: '909 Birch St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 23,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Sandwich, Juice',
+                    customerRecieveTm: '2025-09-07T19:15:00',
+                    prepTime: '10 min',
+                    dispatchTime: '2025-09-07T19:05:00',
+                    deliveryTm: '2025-09-07T19:15:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44090',
+                    posOrderNo: 'POS90',
+                    date: '2025-09-07T18:48:52',
+                    outlet: 'Satwa',
+                    cusName: 'Richard Harris',
+                    cusPhone: '+97155443322',
+                    address: '1010 Elm St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 142,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'BBQ Platter, Soda',
+                    customerRecieveTm: '2025-09-07T19:15:00',
+                    prepTime: '22 min',
+                    dispatchTime: '2025-09-07T19:05:00',
+                    deliveryTm: '2025-09-07T19:15:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44091',
+                    posOrderNo: 'POS91',
+                    date: '2025-09-07T18:37:16',
+                    outlet: 'Muroor',
+                    cusName: 'Susan Martin',
+                    cusPhone: '+97133445566',
+                    address: '1111 Oak St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 16,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Coffee, Muffin',
+                    customerRecieveTm: '2025-09-07T18:45:00',
+                    prepTime: '5 min',
+                    dispatchTime: 'N/A',
+                    deliveryTm: 'N/A',
+                    type: 'Pickup',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44092',
+                    posOrderNo: 'POS92',
+                    date: '2025-09-07T18:24:34',
+                    outlet: 'Shabiya',
+                    cusName: 'Charles Thompson',
+                    cusPhone: '+97177889900',
+                    address: '1212 Pine St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 52,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Pasta, Garlic Bread',
+                    customerRecieveTm: '2025-09-07T18:50:00',
+                    prepTime: '20 min',
+                    dispatchTime: '2025-09-07T18:40:00',
+                    deliveryTm: '2025-09-07T18:50:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44093',
+                    posOrderNo: 'POS93',
+                    date: '2025-09-07T18:14:53',
+                    outlet: 'Hamdan',
+                    cusName: 'Karen Garcia',
+                    cusPhone: '+97199001122',
+                    address: '1313 Maple St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 21,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Burger, Fries',
+                    customerRecieveTm: '2025-09-07T18:35:00',
+                    prepTime: '15 min',
+                    dispatchTime: '2025-09-07T18:25:00',
+                    deliveryTm: '2025-09-07T18:35:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44094',
+                    posOrderNo: 'POS94',
+                    date: '2025-09-07T18:09:22',
+                    outlet: 'Muroor',
+                    cusName: 'Steven Martinez',
+                    cusPhone: '+97144556677',
+                    address: '1414 Cedar St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 52,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Pizza, Soda',
+                    customerRecieveTm: '2025-09-07T18:30:00',
+                    prepTime: '18 min',
+                    dispatchTime: '2025-09-07T18:20:00',
+                    deliveryTm: '2025-09-07T18:30:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44095',
+                    posOrderNo: 'POS95',
+                    date: '2025-09-07T18:06:53',
+                    outlet: 'Hamdan',
+                    cusName: 'Nancy Robinson',
+                    cusPhone: '+97188990011',
+                    address: '1515 Birch St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 94,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Steak, Wine',
+                    customerRecieveTm: '2025-09-07T18:35:00',
+                    prepTime: '25 min',
+                    dispatchTime: '2025-09-07T18:25:00',
+                    deliveryTm: '2025-09-07T18:35:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44096',
+                    posOrderNo: 'POS96',
+                    date: '2025-09-07T18:04:57',
+                    outlet: 'Barsha',
+                    cusName: 'Donald Clark',
+                    cusPhone: '+97166778899',
+                    address: '1616 Elm St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 21,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Sandwich, Chips',
+                    customerRecieveTm: '2025-09-07T18:20:00',
+                    prepTime: '10 min',
+                    dispatchTime: '2025-09-07T18:10:00',
+                    deliveryTm: '2025-09-07T18:20:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44097',
+                    posOrderNo: 'POS97',
+                    date: '2025-09-07T18:02:17',
+                    outlet: 'Muroor',
+                    cusName: 'Lisa Rodriguez',
+                    cusPhone: '+97155443322',
+                    address: '1717 Oak St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 130,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'Seafood Platter, Wine',
+                    customerRecieveTm: '2025-09-07T18:30:00',
+                    prepTime: '22 min',
+                    dispatchTime: '2025-09-07T18:20:00',
+                    deliveryTm: '2025-09-07T18:30:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44098',
+                    posOrderNo: 'POS98',
+                    date: '2025-09-07T17:55:22',
+                    outlet: 'Muroor',
+                    cusName: 'Michael Lewis',
+                    cusPhone: '+97133445566',
+                    address: '1818 Pine St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 100,
+                    agentName: 'SALEH EMAD',
+                    orderedItem: 'BBQ Platter, Soda',
+                    customerRecieveTm: '2025-09-07T18:20:00',
+                    prepTime: '20 min',
+                    dispatchTime: '2025-09-07T18:10:00',
+                    deliveryTm: '2025-09-07T18:20:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44099',
+                    posOrderNo: 'POS99',
+                    date: '2025-09-07T17:47:23',
+                    outlet: 'Khalidiyah',
+                    cusName: 'Sarah Lee',
+                    cusPhone: '+97177889900',
+                    address: '1919 Maple St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 29,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Salad, Soup',
+                    customerRecieveTm: '2025-09-07T18:10:00',
+                    prepTime: '15 min',
+                    dispatchTime: '2025-09-07T18:00:00',
+                    deliveryTm: '2025-09-07T18:10:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44100',
+                    posOrderNo: 'POS100',
+                    date: '2025-09-07T17:45:22',
+                    outlet: 'Muroor',
+                    cusName: 'David Walker',
+                    cusPhone: '+97199001122',
+                    address: '2020 Cedar St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 25,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Taco, Soda',
+                    customerRecieveTm: '2025-09-07T18:05:00',
+                    prepTime: '12 min',
+                    dispatchTime: '2025-09-07T17:55:00',
+                    deliveryTm: '2025-09-07T18:05:00',
+                    type: 'Delivery',
+                    incidentId: '',
+                    incidentDe: ''
+                },
+                {
+                    orderNo: '44169',
+                    posOrderNo: 'POS169',
+                    date: '2025-09-07T13:48:32',
+                    outlet: 'Hamdan',
+                    cusName: 'James Hall',
+                    cusPhone: '+97144556677',
+                    address: '2121 Birch St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 37,
+                    agentName: 'manju ranabhat',
+                    orderedItem: 'Pizza, Garlic Bread',
+                    customerRecieveTm: 'N/A',
+                    prepTime: 'N/A',
+                    dispatchTime: 'N/A',
+                    deliveryTm: 'N/A',
+                    type: 'Delivery',
+                    incidentId: 'INC001',
+                    incidentDe: 'void by rest',
+                    status: 'void'
+                },
+                {
+                    orderNo: '44170',
+                    posOrderNo: 'POS170',
+                    date: '2025-09-07T13:47:53',
+                    outlet: 'Shabiya',
+                    cusName: 'Mary Allen',
+                    cusPhone: '+97188990011',
+                    address: '2222 Elm St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 37,
+                    agentName: 'manju ranabhat',
+                    orderedItem: 'Burger, Fries',
+                    customerRecieveTm: 'N/A',
+                    prepTime: 'N/A',
+                    dispatchTime: 'N/A',
+                    deliveryTm: 'N/A',
+                    type: 'Delivery',
+                    incidentId: 'INC002',
+                    incidentDe: 'void by agent',
+                    status: 'void'
+                },
+                {
+                    orderNo: '44173',
+                    posOrderNo: 'POS173',
+                    date: '2025-09-07T13:46:24',
+                    outlet: 'Khalidiyah',
+                    cusName: 'Robert Young',
+                    cusPhone: '+97166778899',
+                    address: '2323 Oak St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 32,
+                    agentName: 'BHAWNA SHARMA',
+                    orderedItem: 'Pasta, Salad',
+                    customerRecieveTm: 'N/A',
+                    prepTime: 'N/A',
+                    dispatchTime: 'N/A',
+                    deliveryTm: 'N/A',
+                    type: 'Delivery',
+                    incidentId: 'INC003',
+                    incidentDe: 'void by customer',
+                    status: 'void'
+                },
+                {
+                    orderNo: '44208',
+                    posOrderNo: 'POS208',
+                    date: '2025-09-07T11:48:29',
+                    outlet: 'Shabiya',
+                    cusName: 'Patricia Hernandez',
+                    cusPhone: '+97155443322',
+                    address: '2424 Pine St, Dubai',
+                    payMethod: 'Cash',
+                    finalTotal: 62,
+                    agentName: 'manju ranabhat',
+                    orderedItem: 'Sandwich, Chips',
+                    customerRecieveTm: 'N/A',
+                    prepTime: 'N/A',
+                    dispatchTime: 'N/A',
+                    deliveryTm: 'N/A',
+                    type: 'Delivery',
+                    incidentId: 'INC004',
+                    incidentDe: 'void by rest',
+                    status: 'void'
+                },
+                {
+                    orderNo: '44281',
+                    posOrderNo: 'POS281',
+                    date: '2025-09-07T07:27:34',
+                    outlet: 'Khalidiyah',
+                    cusName: 'Christopher King',
+                    cusPhone: '+97133445566',
+                    address: '2525 Maple St, Dubai',
+                    payMethod: 'Credit Card',
+                    finalTotal: 41,
+                    agentName: 'Ann Arielle David',
+                    orderedItem: 'Coffee, Pastry',
+                    customerRecieveTm: 'N/A',
+                    prepTime: 'N/A',
+                    dispatchTime: 'N/A',
+                    deliveryTm: 'N/A',
+                    type: 'Delivery',
+                    incidentId: 'INC005',
+                    incidentDe: 'void by rest',
+                    status: 'void'
+                }
             ];
             
             ordersData = sampleData;
             filteredData = [...sampleData];
             
+            // Initialize all columns as visible
+            const tableHeaders = document.querySelectorAll('#ordersTable thead th');
+            tableHeaders.forEach((th, index) => {
+                const columnName = th.textContent.trim();
+                visibleColumns[columnName] = true;
+            });
+            
+            populateColumnToggles();
             populateFilters();
             updateMetrics();
             renderTable();
             updateBranchTable();
             updateAgentTable();
+        }
+        
+        // Populate column toggles
+        function populateColumnToggles() {
+            columnVisibility.innerHTML = '';
+            const tableHeaders = document.querySelectorAll('#ordersTable thead th');
+            
+            tableHeaders.forEach((th, index) => {
+                const columnName = th.textContent.trim();
+                const columnToggle = document.createElement('div');
+                columnToggle.className = 'column-toggle';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `column-toggle-${index}`;
+                checkbox.checked = visibleColumns[columnName] !== false;
+                checkbox.addEventListener('change', function() {
+                    visibleColumns[columnName] = this.checked;
+                    updateColumnVisibility();
+                });
+                
+                const label = document.createElement('label');
+                label.htmlFor = `column-toggle-${index}`;
+                label.textContent = columnName;
+                
+                columnToggle.appendChild(checkbox);
+                columnToggle.appendChild(label);
+                columnVisibility.appendChild(columnToggle);
+            });
+        }
+        
+        // Update column visibility
+        function updateColumnVisibility() {
+            const tableHeaders = document.querySelectorAll('#ordersTable thead th');
+            const tableRows = document.querySelectorAll('#ordersTable tbody tr');
+            
+            tableHeaders.forEach((th, index) => {
+                const columnName = th.textContent.trim();
+                if (visibleColumns[columnName] === false) {
+                    th.style.display = 'none';
+                } else {
+                    th.style.display = '';
+                }
+            });
+            
+            tableRows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                cells.forEach((cell, index) => {
+                    if (index < tableHeaders.length) {
+                        const columnName = tableHeaders[index].textContent.trim();
+                        if (visibleColumns[columnName] === false) {
+                            cell.style.display = 'none';
+                        } else {
+                            cell.style.display = '';
+                        }
+                    }
+                });
+            });
         }
         
         // Handle file upload
@@ -1401,18 +2059,37 @@
                     
                     // Process the data
                     ordersData = jsonData.map(row => ({
-                        branch: row['BRANCH'] || '',
                         orderNo: row['Order no'] || '',
-                        dateTime: row['Date'] || '',
-                        agentName: row['AGENT NAME'] || '',
-                        type: row['TYPE'] || '',
-                        amount: parseFloat(row['AMOUNT']) || 0,
-                        status: row['STATUS'] || '',
-                        voidReason: row['VOID'] || ''
+                        posOrderNo: row['pos Order no'] || '',
+                        date: row['Date'] || '',
+                        outlet: row['Outlet'] || '',
+                        cusName: row['Cus Name'] || '',
+                        cusPhone: row['Cus Phone'] || '',
+                        address: row['Address'] || '',
+                        payMethod: row['Pay Method'] || '',
+                        finalTotal: parseFloat(row['Final Total']) || 0,
+                        agentName: row['Agent Name'] || '',
+                        orderedItem: row['Ordered Itel'] || '',
+                        customerRecieveTm: row['Customer C Recieve Tm'] || '',
+                        prepTime: row['Prep Time'] || '',
+                        dispatchTime: row['Dispatch Tir'] || '',
+                        deliveryTm: row['Delivery Tm'] || '',
+                        type: row['Type'] || '',
+                        incidentId: row['Incident ID'] || '',
+                        incidentDe: row['Incident De'] || '',
+                        status: row['STATUS'] || ''
                     }));
                     
                     filteredData = [...ordersData];
                     
+                    // Initialize all columns as visible
+                    const tableHeaders = document.querySelectorAll('#ordersTable thead th');
+                    tableHeaders.forEach((th) => {
+                        const columnName = th.textContent.trim();
+                        visibleColumns[columnName] = true;
+                    });
+                    
+                    populateColumnToggles();
                     populateFilters();
                     updateMetrics();
                     renderTable();
@@ -1435,7 +2112,7 @@
         // Populate filter dropdowns
         function populateFilters() {
             // Get unique branches
-            const branches = [...new Set(ordersData.map(order => order.branch).filter(Boolean))];
+            const branches = [...new Set(ordersData.map(order => order.outlet).filter(Boolean))];
             branchFilter.innerHTML = '<option value="">All Branches</option>';
             branches.forEach(branch => {
                 const option = document.createElement('option');
@@ -1458,7 +2135,7 @@
         // Update metrics
         function updateMetrics() {
             const totalOrders = ordersData.length;
-            const totalValue = ordersData.reduce((sum, order) => sum + order.amount, 0);
+            const totalValue = ordersData.reduce((sum, order) => sum + order.finalTotal, 0);
             const avgOrderValue = totalOrders > 0 ? totalValue / totalOrders : 0;
             const lateOrders = ordersData.filter(order => order.status === 'late').length;
             const voidOrders = ordersData.filter(order => order.status === 'void').length;
@@ -1484,7 +2161,7 @@
             const tableBody = document.getElementById('ordersTableBody');
             
             if (filteredData.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="8" class="text-center">No data available.</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="18" class="text-center">No data available.</td></tr>';
                 return;
             }
             
@@ -1494,10 +2171,10 @@
                 const row = document.createElement('tr');
                 
                 // Format date and time
-                let formattedDateTime = '';
-                if (order.dateTime) {
-                    const date = new Date(order.dateTime);
-                    formattedDateTime = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                let formattedDate = '';
+                if (order.date) {
+                    const date = new Date(order.date);
+                    formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
                 }
                 
                 // Status badge class
@@ -1508,18 +2185,37 @@
                 else if (order.status === 'void') statusClass = 'status-void';
                 
                 row.innerHTML = `
-                    <td>${order.branch}</td>
                     <td>${order.orderNo}</td>
-                    <td>${formattedDateTime}</td>
+                    <td>${order.posOrderNo}</td>
+                    <td>${formattedDate}</td>
+                    <td>${order.outlet}</td>
+                    <td>${order.cusName}</td>
+                    <td>${order.cusPhone}</td>
+                    <td>${order.address}</td>
+                    <td>${order.payMethod}</td>
+                    <td>$${order.finalTotal.toFixed(2)}</td>
                     <td>${order.agentName}</td>
+                    <td>${order.orderedItem}</td>
+                    <td>${order.customerRecieveTm}</td>
+                    <td>${order.prepTime}</td>
+                    <td>${order.dispatchTime}</td>
+                    <td>${order.deliveryTm}</td>
                     <td>${order.type}</td>
-                    <td>$${order.amount.toFixed(2)}</td>
-                    <td><span class="status-badge ${statusClass}">${order.status}</span></td>
-                    <td>${order.voidReason}</td>
+                    <td>${order.incidentId}</td>
+                    <td>${order.incidentDe}</td>
                 `;
+                
+                // Add status badge to the last column if status is available
+                if (order.status) {
+                    const statusCell = row.cells[17]; // Incident De column
+                    statusCell.innerHTML = `<span class="status-badge ${statusClass}">${order.status}</span>`;
+                }
                 
                 tableBody.appendChild(row);
             });
+            
+            // Update column visibility
+            updateColumnVisibility();
         }
         
         // Update branch table
@@ -1528,9 +2224,9 @@
             
             // Group orders by branch
             ordersData.forEach(order => {
-                if (!branches[order.branch]) {
-                    branches[order.branch] = {
-                        name: order.branch,
+                if (!branches[order.outlet]) {
+                    branches[order.outlet] = {
+                        name: order.outlet,
                         totalOrders: 0,
                         totalValue: 0,
                         lateOrders: 0,
@@ -1539,16 +2235,16 @@
                     };
                 }
                 
-                branches[order.branch].totalOrders++;
-                branches[order.branch].totalValue += order.amount;
+                branches[order.outlet].totalOrders++;
+                branches[order.outlet].totalValue += order.finalTotal;
                 
-                if (order.status === 'late') branches[order.branch].lateOrders++;
-                if (order.status === 'void') branches[order.branch].voidOrders++;
+                if (order.status === 'late') branches[order.outlet].lateOrders++;
+                if (order.status === 'void') branches[order.outlet].voidOrders++;
                 
-                if (!branches[order.branch].agents[order.agentName]) {
-                    branches[order.branch].agents[order.agentName] = 0;
+                if (!branches[order.outlet].agents[order.agentName]) {
+                    branches[order.outlet].agents[order.agentName] = 0;
                 }
-                branches[order.branch].agents[order.agentName]++;
+                branches[order.outlet].agents[order.agentName]++;
             });
             
             // Find top agent for each branch
@@ -1611,15 +2307,15 @@
                 }
                 
                 agents[order.agentName].totalOrders++;
-                agents[order.agentName].totalValue += order.amount;
+                agents[order.agentName].totalValue += order.finalTotal;
                 
                 if (order.status === 'late') agents[order.agentName].lateOrders++;
                 if (order.status === 'void') agents[order.agentName].voidOrders++;
                 
-                if (!agents[order.agentName].branches[order.branch]) {
-                    agents[order.agentName].branches[order.branch] = 0;
+                if (!agents[order.agentName].branches[order.outlet]) {
+                    agents[order.agentName].branches[order.outlet] = 0;
                 }
-                agents[order.agentName].branches[order.branch]++;
+                agents[order.agentName].branches[order.outlet]++;
             });
             
             // Find primary branch for each agent
@@ -1678,13 +2374,15 @@
             filteredData = ordersData.filter(order => {
                 // Search filter
                 const matchesSearch = searchTerm === '' || 
-                    order.branch.toLowerCase().includes(searchTerm) ||
+                    order.outlet.toLowerCase().includes(searchTerm) ||
                     order.orderNo.toLowerCase().includes(searchTerm) ||
                     order.agentName.toLowerCase().includes(searchTerm) ||
-                    order.type.toLowerCase().includes(searchTerm);
+                    order.type.toLowerCase().includes(searchTerm) ||
+                    order.cusName.toLowerCase().includes(searchTerm) ||
+                    order.posOrderNo.toLowerCase().includes(searchTerm);
                 
                 // Branch filter
-                const matchesBranch = branchValue === '' || order.branch === branchValue;
+                const matchesBranch = branchValue === '' || order.outlet === branchValue;
                 
                 // Agent filter
                 const matchesAgent = agentValue === '' || order.agentName === agentValue;
@@ -1824,10 +2522,10 @@
             const branchData = {};
             
             ordersData.forEach(order => {
-                if (!branchData[order.branch]) {
-                    branchData[order.branch] = 0;
+                if (!branchData[order.outlet]) {
+                    branchData[order.outlet] = 0;
                 }
-                branchData[order.branch]++;
+                branchData[order.outlet]++;
             });
             
             charts.branchOrders = new Chart(branchOrdersCtx, {
@@ -1936,9 +2634,9 @@
             const hourlyData = Array(24).fill(0);
             
             ordersData.forEach(order => {
-                if (order.dateTime) {
-                    const hour = new Date(order.dateTime).getHours();
-                    hourlyData[hour] += order.amount;
+                if (order.date) {
+                    const hour = new Date(order.date).getHours();
+                    hourlyData[hour] += order.finalTotal;
                 }
             });
             
@@ -2020,41 +2718,72 @@
             }
             
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
+            const doc = new jsPDF('landscape'); // Use landscape for wide table
             
             // Add title
             doc.setFontSize(18);
-            doc.text('Order Management System', 105, 15, { align: 'center' });
+            doc.text('Order Management System', 148, 15, { align: 'center' });
             
             // Add date
             doc.setFontSize(12);
-            doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, 25, { align: 'center' });
+            doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 148, 25, { align: 'center' });
             
             // Prepare table data
             const tableData = filteredData.map(order => [
-                order.branch,
                 order.orderNo,
-                order.dateTime ? new Date(order.dateTime).toLocaleDateString() : '',
+                order.posOrderNo,
+                order.date ? new Date(order.date).toLocaleDateString() : '',
+                order.outlet,
+                order.cusName,
+                order.cusPhone,
+                order.address,
+                order.payMethod,
+                `$${order.finalTotal.toFixed(2)}`,
                 order.agentName,
+                order.orderedItem,
+                order.customerRecieveTm,
+                order.prepTime,
+                order.dispatchTime,
+                order.deliveryTm,
                 order.type,
-                `$${order.amount.toFixed(2)}`,
-                order.status,
-                order.voidReason
+                order.incidentId,
+                order.incidentDe
             ]);
             
             // Add table
             doc.autoTable({
-                head: [['Branch', 'Order No', 'Date', 'Agent Name', 'Type', 'Amount', 'Status', 'Void Reason']],
+                head: [['Order no', 'pos Order no', 'Date', 'Outlet', 'Cus Name', 'Cus Phone', 'Address', 'Pay Method', 'Final Total', 'Agent Name', 'Ordered Item', 'Customer Recieve Tm', 'Prep Time', 'Dispatch Time', 'Delivery Tm', 'Type', 'Incident ID', 'Incident De']],
                 body: tableData,
                 startY: 35,
                 styles: {
                     font: 'helvetica',
-                    fontSize: 10,
-                    cellPadding: 3
+                    fontSize: 8,
+                    cellPadding: 2
                 },
                 headStyles: {
                     fillColor: [0, 255, 255],
-                    textColor: [0, 0, 0]
+                    textColor: [0, 0, 0],
+                    fontSize: 9
+                },
+                columnStyles: {
+                    0: { cellWidth: 15 }, // Order no
+                    1: { cellWidth: 15 }, // pos Order no
+                    2: { cellWidth: 20 }, // Date
+                    3: { cellWidth: 15 }, // Outlet
+                    4: { cellWidth: 20 }, // Cus Name
+                    5: { cellWidth: 20 }, // Cus Phone
+                    6: { cellWidth: 25 }, // Address
+                    7: { cellWidth: 20 }, // Pay Method
+                    8: { cellWidth: 15 }, // Final Total
+                    9: { cellWidth: 20 }, // Agent Name
+                    10: { cellWidth: 20 }, // Ordered Item
+                    11: { cellWidth: 20 }, // Customer Recieve Tm
+                    12: { cellWidth: 15 }, // Prep Time
+                    13: { cellWidth: 15 }, // Dispatch Time
+                    14: { cellWidth: 15 }, // Delivery Tm
+                    15: { cellWidth: 10 }, // Type
+                    16: { cellWidth: 15 }, // Incident ID
+                    17: { cellWidth: 20 }  // Incident De
                 }
             });
             
@@ -2081,45 +2810,99 @@
                 <head>
                     <title>Order Management System - Print View</title>
                     <style>
-                        body { font-family: Arial, sans-serif; margin: 20px; }
-                        h1 { text-align: center; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                        th { background-color: #f2f2f2; }
-                        tr:nth-child(even) { background-color: #f9f9f9; }
-                        .status-badge { padding: 3px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
-                        .status-active { background-color: rgba(0, 255, 255, 0.2); color: #00ffff; }
-                        .status-late { background-color: rgba(255, 0, 64, 0.2); color: #ff0040; }
-                        .status-completed { background-color: rgba(0, 255, 136, 0.2); color: #00ff88; }
-                        .status-void { background-color: rgba(255, 153, 0, 0.2); color: #ff9900; }
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            margin: 20px; 
+                            font-size: 12px;
+                        }
+                        h1 { 
+                            text-align: center; 
+                            font-size: 18px;
+                            margin-bottom: 10px;
+                        }
+                        table { 
+                            width: 100%; 
+                            border-collapse: collapse; 
+                            margin-top: 20px; 
+                            font-size: 10px;
+                        }
+                        th, td { 
+                            border: 1px solid #ddd; 
+                            padding: 6px; 
+                            text-align: left; 
+                            white-space: nowrap;
+                        }
+                        th { 
+                            background-color: #f2f2f2; 
+                            font-weight: bold;
+                        }
+                        tr:nth-child(even) { 
+                            background-color: #f9f9f9; 
+                        }
+                        .status-badge { 
+                            padding: 2px 6px; 
+                            border-radius: 10px; 
+                            font-size: 0.7rem; 
+                            font-weight: bold; 
+                            white-space: nowrap;
+                        }
+                        .status-active { 
+                            background-color: rgba(0, 255, 255, 0.2); 
+                            color: #00ffff; 
+                        }
+                        .status-late { 
+                            background-color: rgba(255, 0, 64, 0.2); 
+                            color: #ff0040; 
+                        }
+                        .status-completed { 
+                            background-color: rgba(0, 255, 136, 0.2); 
+                            color: #00ff88; 
+                        }
+                        .status-void { 
+                            background-color: rgba(255, 153, 0, 0.2); 
+                            color: #ff9900; 
+                        }
                         @media print {
-                            body { margin: 0; }
+                            body { margin: 10px; }
                             .no-print { display: none; }
+                            table { font-size: 8px; }
+                            th, td { padding: 4px; }
                         }
                     </style>
                 </head>
                 <body>
                     <h1>Order Management System</h1>
-                    <p>Generated on: ${new Date().toLocaleDateString()}</p>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Branch</th>
-                                <th>Order No</th>
-                                <th>Date & Time</th>
-                                <th>Agent Name</th>
-                                <th>Type</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                                <th>Void Reason</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                    <p style="text-align: center; margin-bottom: 20px;">Generated on: ${new Date().toLocaleDateString()}</p>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Order no</th>
+                                    <th>pos Order no</th>
+                                    <th>Date</th>
+                                    <th>Outlet</th>
+                                    <th>Cus Name</th>
+                                    <th>Cus Phone</th>
+                                    <th>Address</th>
+                                    <th>Pay Method</th>
+                                    <th>Final Total</th>
+                                    <th>Agent Name</th>
+                                    <th>Ordered Item</th>
+                                    <th>Customer Recieve Tm</th>
+                                    <th>Prep Time</th>
+                                    <th>Dispatch Time</th>
+                                    <th>Delivery Tm</th>
+                                    <th>Type</th>
+                                    <th>Incident ID</th>
+                                    <th>Incident De</th>
+                                </tr>
+                            </thead>
+                            <tbody>
             `;
             
             // Add table rows
             filteredData.forEach(order => {
-                const formattedDateTime = order.dateTime ? new Date(order.dateTime).toLocaleString() : '';
+                const formattedDate = order.date ? new Date(order.date).toLocaleString() : '';
                 let statusClass = '';
                 if (order.status === 'active') statusClass = 'status-active';
                 else if (order.status === 'late') statusClass = 'status-late';
@@ -2128,14 +2911,24 @@
                 
                 htmlContent += `
                     <tr>
-                        <td>${order.branch}</td>
                         <td>${order.orderNo}</td>
-                        <td>${formattedDateTime}</td>
+                        <td>${order.posOrderNo}</td>
+                        <td>${formattedDate}</td>
+                        <td>${order.outlet}</td>
+                        <td>${order.cusName}</td>
+                        <td>${order.cusPhone}</td>
+                        <td>${order.address}</td>
+                        <td>${order.payMethod}</td>
+                        <td>$${order.finalTotal.toFixed(2)}</td>
                         <td>${order.agentName}</td>
+                        <td>${order.orderedItem}</td>
+                        <td>${order.customerRecieveTm}</td>
+                        <td>${order.prepTime}</td>
+                        <td>${order.dispatchTime}</td>
+                        <td>${order.deliveryTm}</td>
                         <td>${order.type}</td>
-                        <td>$${order.amount.toFixed(2)}</td>
-                        <td><span class="status-badge ${statusClass}">${order.status}</span></td>
-                        <td>${order.voidReason}</td>
+                        <td>${order.incidentId}</td>
+                        <td>${order.incidentDe}</td>
                     </tr>
                 `;
             });
@@ -2143,9 +2936,10 @@
             htmlContent += `
                         </tbody>
                     </table>
+                    </div>
                     <div class="no-print" style="margin-top: 20px; text-align: center;">
-                        <button onclick="window.print()">Print</button>
-                        <button onclick="window.close()">Close</button>
+                        <button onclick="window.print()" style="padding: 8px 16px; background: #00ffff; color: #000; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Print</button>
+                        <button onclick="window.close()" style="padding: 8px 16px; background: #ff00ff; color: #000; border: none; border-radius: 4px; cursor: pointer;">Close</button>
                     </div>
                 </body>
                 </html>
@@ -2192,7 +2986,7 @@
                 
                 // Add summary
                 const totalOrders = ordersData.length;
-                const totalValue = ordersData.reduce((sum, order) => sum + order.amount, 0);
+                const totalValue = ordersData.reduce((sum, order) => sum + order.finalTotal, 0);
                 const avgOrderValue = totalOrders > 0 ? totalValue / totalOrders : 0;
                 
                 doc.setFontSize(14);
