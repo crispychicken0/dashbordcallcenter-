@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Management System</title>
+    <title>Order Management System - Advanced Dashboard</title>
     
     <!-- Bootstrap 5.3.0 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     
     <!-- Font Awesome 6.0.0 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <!-- SheetJS for Excel processing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -28,10 +31,18 @@
             --danger: #ff0040;
             --warning: #ff9900;
             --dark: #0a0a0a;
+            --info: #00b8ff;
+            --light: #f8f9fa;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
         
         body {
-            background-color: #121212;
+            background-color: #0a0a0a;
             color: #ffffff;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             min-height: 100vh;
@@ -60,13 +71,95 @@
             100% { transform: translate(0, 0) rotate(0deg); }
         }
         
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 260px;
+            background: linear-gradient(180deg, rgba(0, 255, 255, 0.1) 0%, rgba(255, 0, 255, 0.1) 100%);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px 0;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-header {
+            padding: 0 20px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .sidebar-header h2 {
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-size: 1.5rem;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .sidebar-menu li {
+            margin-bottom: 5px;
+        }
+        
+        .sidebar-menu a {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .sidebar-menu a:hover, .sidebar-menu a.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar-menu a.active::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 4px;
+            background: var(--primary);
+        }
+        
+        .sidebar-menu i {
+            margin-right: 10px;
+            font-size: 1.2rem;
+        }
+        
+        /* Main Content */
+        .main-content {
+            margin-left: 260px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        
         /* Header */
         .header {
             background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
             backdrop-filter: blur(10px);
-            padding: 20px 0;
+            padding: 20px;
+            border-radius: 15px;
             margin-bottom: 30px;
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
         }
         
         .header h1 {
@@ -88,6 +181,24 @@
             padding: 20px;
             transition: all 0.3s ease;
             margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .glass-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            transform: translateX(-100%);
+            transition: transform 0.5s ease;
+        }
+        
+        .glass-card:hover::before {
+            transform: translateX(0);
         }
         
         .glass-card:hover {
@@ -99,6 +210,32 @@
         /* Metric Cards */
         .metric-card {
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .metric-card::after {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            transform: translate(30%, 30%);
+        }
+        
+        .metric-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .metric-label {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 5px;
         }
         
         .metric-value {
@@ -116,6 +253,19 @@
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
+        }
+        
+        .metric-change {
+            font-size: 0.8rem;
+            margin-top: 5px;
+        }
+        
+        .metric-change.positive {
+            color: var(--success);
+        }
+        
+        .metric-change.negative {
+            color: var(--danger);
         }
         
         /* Status Badges */
@@ -166,6 +316,9 @@
             padding: 15px;
             text-align: left;
             font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         
         .custom-table tbody tr {
@@ -247,7 +400,6 @@
             position: relative;
             display: inline-block;
             cursor: pointer;
-            margin-bottom: 20px;
         }
         
         .file-upload input[type=file] {
@@ -259,7 +411,8 @@
         }
         
         .file-upload-label {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
             padding: 10px 20px;
             background: linear-gradient(90deg, var(--primary), var(--secondary));
             color: var(--dark);
@@ -278,6 +431,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
         
         .export-btn {
@@ -312,10 +466,17 @@
             transition: transform 0.5s ease;
             z-index: 1000;
             max-width: 300px;
+            display: flex;
+            align-items: center;
         }
         
         .notification.show {
             transform: translateX(0);
+        }
+        
+        .notification i {
+            margin-right: 10px;
+            font-size: 1.2rem;
         }
         
         /* Loading Spinner */
@@ -345,8 +506,50 @@
             to { transform: rotate(360deg); }
         }
         
+        /* Chart Containers */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        
+        /* Toggle Sidebar Button */
+        .toggle-sidebar {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        
         /* Responsive adjustments */
-        @media (max-width: 768px) {
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .toggle-sidebar {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
             .metric-value {
                 font-size: 2rem;
             }
@@ -361,6 +564,142 @@
                 flex-direction: column;
             }
         }
+        
+        /* Tabs */
+        .custom-tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+        
+        .custom-tab {
+            padding: 10px 20px;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        
+        .custom-tab:hover {
+            color: white;
+        }
+        
+        .custom-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Progress Bars */
+        .progress-container {
+            margin-bottom: 15px;
+        }
+        
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        
+        .progress {
+            height: 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 1s ease;
+        }
+        
+        .progress-bar.primary {
+            background: linear-gradient(90deg, var(--primary), var(--info));
+        }
+        
+        .progress-bar.success {
+            background: linear-gradient(90deg, var(--success), var(--primary));
+        }
+        
+        .progress-bar.warning {
+            background: linear-gradient(90deg, var(--warning), var(--secondary));
+        }
+        
+        .progress-bar.danger {
+            background: linear-gradient(90deg, var(--danger), var(--warning));
+        }
+        
+        /* Activity Feed */
+        .activity-feed {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .activity-item {
+            display: flex;
+            padding: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .activity-item:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        
+        .activity-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        
+        .activity-icon.primary {
+            background-color: rgba(0, 255, 255, 0.2);
+            color: var(--primary);
+        }
+        
+        .activity-icon.success {
+            background-color: rgba(0, 255, 136, 0.2);
+            color: var(--success);
+        }
+        
+        .activity-icon.warning {
+            background-color: rgba(255, 153, 0, 0.2);
+            color: var(--warning);
+        }
+        
+        .activity-icon.danger {
+            background-color: rgba(255, 0, 64, 0.2);
+            color: var(--danger);
+        }
+        
+        .activity-content {
+            flex-grow: 1;
+        }
+        
+        .activity-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .activity-time {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
     </style>
 </head>
 <body>
@@ -368,189 +707,540 @@
     <div class="spinner-container" id="spinner">
         <div class="spinner"></div>
     </div>
-
+    
     <!-- Notification -->
     <div class="notification" id="notification">
-        <i class="fas fa-check-circle me-2"></i>
+        <i class="fas fa-check-circle"></i>
         <span id="notification-message">System updated successfully!</span>
     </div>
-
-    <!-- Header -->
-    <header class="header">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-8">
-                    <h1>Order Management System</h1>
-                    <p class="lead mb-0">Complete order tracking and analysis</p>
-                </div>
-                <div class="col-md-4 text-end">
-                    <div class="file-upload">
-                        <input type="file" id="fileUpload" accept=".xlsx, .xls">
-                        <label for="fileUpload" class="file-upload-label">
-                            <i class="fas fa-file-excel me-2"></i>Upload Excel File
-                        </label>
-                    </div>
-                </div>
-            </div>
+    
+    <!-- Toggle Sidebar Button -->
+    <button class="toggle-sidebar" id="toggleSidebar">
+        <i class="fas fa-bars"></i>
+    </button>
+    
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>Order Manager</h2>
         </div>
-    </header>
-
-    <div class="container">
-        <!-- Metrics Section -->
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="glass-card metric-card">
-                    <div class="metric-label">Total Orders</div>
-                    <div class="metric-value" id="totalOrders">0</div>
-                    <div class="metric-change text-success">+12% from last week</div>
-                </div>
+        <ul class="sidebar-menu">
+            <li><a href="#" class="active" data-tab="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+            <li><a href="#" data-tab="orders"><i class="fas fa-shopping-cart"></i> Orders</a></li>
+            <li><a href="#" data-tab="analytics"><i class="fas fa-chart-line"></i> Analytics</a></li>
+            <li><a href="#" data-tab="branches"><i class="fas fa-store"></i> Branches</a></li>
+            <li><a href="#" data-tab="agents"><i class="fas fa-users"></i> Agents</a></li>
+            <li><a href="#" data-tab="reports"><i class="fas fa-file-alt"></i> Reports</a></li>
+            <li><a href="#" data-tab="settings"><i class="fas fa-cog"></i> Settings</a></li>
+        </ul>
+    </aside>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <h1>Order Management System</h1>
+                <p class="lead mb-0">Complete order tracking and analysis</p>
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="glass-card metric-card">
-                    <div class="metric-label">Total Value (Sales)</div>
-                    <div class="metric-value" id="totalValue">$0</div>
-                    <div class="metric-change text-primary">+8% from last week</div>
-                </div>
+            <div class="file-upload">
+                <input type="file" id="fileUpload" accept=".xlsx, .xls">
+                <label for="fileUpload" class="file-upload-label">
+                    <i class="fas fa-file-excel me-2"></i>Upload Excel File
+                </label>
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="glass-card metric-card">
-                    <div class="metric-label">Average Order Value</div>
-                    <div class="metric-value" id="avgOrderValue">$0</div>
-                    <div class="metric-change text-warning">+2% from last week</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="glass-card metric-card">
-                    <div class="metric-label">% Late Orders</div>
-                    <div class="metric-value" id="lateOrdersPercent">0%</div>
-                    <div class="metric-change text-danger">-3% from last week</div>
-                </div>
-            </div>
-        </div>
+        </header>
         
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="glass-card metric-card">
-                    <div class="metric-label">% Void Orders</div>
-                    <div class="metric-value" id="voidOrdersPercent">0%</div>
-                    <div class="metric-change text-warning">-1% from last week</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="glass-card metric-card">
-                    <div class="metric-label">Delivery Orders</div>
-                    <div class="metric-value" id="deliveryOrders">0</div>
-                    <div class="metric-change text-success">+5% from last week</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="glass-card metric-card">
-                    <div class="metric-label">Pickup Orders</div>
-                    <div class="metric-value" id="pickupOrders">0</div>
-                    <div class="metric-change text-primary">+3% from last week</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="glass-card metric-card">
-                    <div class="metric-label">Void Orders</div>
-                    <div class="metric-value" id="voidOrders">0</div>
-                    <div class="metric-change text-danger">-2% from last week</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Search and Filters -->
-        <div class="glass-card mb-4">
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <div class="search-container">
-                        <i class="fas fa-search search-icon"></i>
-                        <input type="text" class="search-input" id="searchInput" placeholder="Search orders...">
+        <!-- Dashboard Tab -->
+        <div class="tab-content active" id="dashboard-tab">
+            <!-- Metrics Section -->
+            <div class="row mb-4">
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon">
+                            <i class="fas fa-shopping-cart"></i>
+                        </div>
+                        <div class="metric-label">Total Orders</div>
+                        <div class="metric-value" id="totalOrders">0</div>
+                        <div class="metric-change positive">+12% from last week</div>
                     </div>
                 </div>
-                <div class="col-md-6 mb-3">
-                    <div class="export-buttons">
-                        <button class="export-btn" id="exportExcel">
-                            <i class="fas fa-file-excel"></i> Export Excel
-                        </button>
-                        <button class="export-btn" id="exportPDF">
-                            <i class="fas fa-file-pdf"></i> Export PDF
-                        </button>
-                        <button class="export-btn" id="printTable">
-                            <i class="fas fa-print"></i> Print
-                        </button>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon">
+                            <i class="fas fa-dollar-sign"></i>
+                        </div>
+                        <div class="metric-label">Total Value (Sales)</div>
+                        <div class="metric-value" id="totalValue">$0</div>
+                        <div class="metric-change positive">+8% from last week</div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon">
+                            <i class="fas fa-chart-bar"></i>
+                        </div>
+                        <div class="metric-label">Average Order Value</div>
+                        <div class="metric-value" id="avgOrderValue">$0</div>
+                        <div class="metric-change positive">+2% from last week</div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="metric-label">% Late Orders</div>
+                        <div class="metric-value" id="lateOrdersPercent">0%</div>
+                        <div class="metric-change positive">-3% from last week</div>
                     </div>
                 </div>
             </div>
             
-            <div class="row">
-                <div class="col-md-12">
-                    <h5 class="mb-3">Filters</h5>
-                    <div class="filter-pills">
-                        <div class="filter-pill active" data-filter="all">All Orders</div>
-                        <div class="filter-pill" data-filter="delivery">Delivery</div>
-                        <div class="filter-pill" data-filter="pickup">Pickup</div>
-                        <div class="filter-pill" data-filter="void">Void</div>
-                        <div class="filter-pill" data-filter="active">Active</div>
-                        <div class="filter-pill" data-filter="late">Late</div>
-                        <div class="filter-pill" data-filter="completed">Completed</div>
+            <div class="row mb-4">
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon">
+                            <i class="fas fa-times-circle"></i>
+                        </div>
+                        <div class="metric-label">% Void Orders</div>
+                        <div class="metric-value" id="voidOrdersPercent">0%</div>
+                        <div class="metric-change positive">-1% from last week</div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon">
+                            <i class="fas fa-truck"></i>
+                        </div>
+                        <div class="metric-label">Delivery Orders</div>
+                        <div class="metric-value" id="deliveryOrders">0</div>
+                        <div class="metric-change positive">+5% from last week</div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon">
+                            <i class="fas fa-box"></i>
+                        </div>
+                        <div class="metric-label">Pickup Orders</div>
+                        <div class="metric-value" id="pickupOrders">0</div>
+                        <div class="metric-change positive">+3% from last week</div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon">
+                            <i class="fas fa-ban"></i>
+                        </div>
+                        <div class="metric-label">Void Orders</div>
+                        <div class="metric-value" id="voidOrders">0</div>
+                        <div class="metric-change positive">-2% from last week</div>
                     </div>
                 </div>
             </div>
             
-            <div class="row mt-3">
-                <div class="col-md-4">
-                    <label for="branchFilter" class="form-label">Filter by Branch</label>
-                    <select class="form-select" id="branchFilter">
-                        <option value="">All Branches</option>
-                    </select>
+            <!-- Charts Section -->
+            <div class="row mb-4">
+                <div class="col-lg-8 mb-4">
+                    <div class="glass-card">
+                        <h3 class="mb-4">Order Trends</h3>
+                        <div class="chart-container">
+                            <canvas id="orderTrendsChart"></canvas>
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-4">
-                    <label for="agentFilter" class="form-label">Filter by Agent</label>
-                    <select class="form-select" id="agentFilter">
-                        <option value="">All Agents</option>
-                    </select>
+                <div class="col-lg-4 mb-4">
+                    <div class="glass-card">
+                        <h3 class="mb-4">Order Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="orderDistributionChart"></canvas>
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-4">
-                    <label for="statusFilter" class="form-label">Filter by Status</label>
-                    <select class="form-select" id="statusFilter">
-                        <option value="">All Statuses</option>
-                        <option value="active">Active</option>
-                        <option value="late">Late</option>
-                        <option value="completed">Completed</option>
-                        <option value="void">Void</option>
-                    </select>
+            </div>
+            
+            <!-- Progress Bars and Activity Feed -->
+            <div class="row mb-4">
+                <div class="col-lg-6 mb-4">
+                    <div class="glass-card">
+                        <h3 class="mb-4">Branch Performance</h3>
+                        <div id="branchPerformance">
+                            <div class="progress-container">
+                                <div class="progress-label">
+                                    <span>Hamdan</span>
+                                    <span>35%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar primary" style="width: 35%"></div>
+                                </div>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-label">
+                                    <span>Barsha</span>
+                                    <span>25%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar success" style="width: 25%"></div>
+                                </div>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-label">
+                                    <span>Shabiya</span>
+                                    <span>20%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar warning" style="width: 20%"></div>
+                                </div>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-label">
+                                    <span>Khalidiyah</span>
+                                    <span>15%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar danger" style="width: 15%"></div>
+                                </div>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-label">
+                                    <span>Muroor</span>
+                                    <span>5%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar primary" style="width: 5%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 mb-4">
+                    <div class="glass-card">
+                        <h3 class="mb-4">Recent Activity</h3>
+                        <div class="activity-feed" id="activityFeed">
+                            <div class="activity-item">
+                                <div class="activity-icon primary">
+                                    <i class="fas fa-shopping-cart"></i>
+                                </div>
+                                <div class="activity-content">
+                                    <div class="activity-title">New order #44078 created</div>
+                                    <div class="activity-time">5 minutes ago</div>
+                                </div>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-icon success">
+                                    <i class="fas fa-check"></i>
+                                </div>
+                                <div class="activity-content">
+                                    <div class="activity-title">Order #44075 completed</div>
+                                    <div class="activity-time">15 minutes ago</div>
+                                </div>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-icon warning">
+                                    <i class="fas fa-clock"></i>
+                                </div>
+                                <div class="activity-content">
+                                    <div class="activity-title">Order #44070 is running late</div>
+                                    <div class="activity-time">30 minutes ago</div>
+                                </div>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-icon danger">
+                                    <i class="fas fa-times-circle"></i>
+                                </div>
+                                <div class="activity-content">
+                                    <div class="activity-title">Order #44065 was voided</div>
+                                    <div class="activity-time">1 hour ago</div>
+                                </div>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-icon primary">
+                                    <i class="fas fa-file-excel"></i>
+                                </div>
+                                <div class="activity-content">
+                                    <div class="activity-title">New data uploaded successfully</div>
+                                    <div class="activity-time">2 hours ago</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- Orders Table -->
-        <div class="glass-card">
-            <h3 class="mb-4">Order Details</h3>
-            <div class="table-responsive">
-                <table class="custom-table" id="ordersTable">
-                    <thead>
-                        <tr>
-                            <th>Branch</th>
-                            <th>Order No</th>
-                            <th>Date & Time</th>
-                            <th>Agent Name</th>
-                            <th>Type</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Void Reason</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ordersTableBody">
-                        <tr>
-                            <td colspan="8" class="text-center">No data available. Please upload an Excel file.</td>
-                        </tr>
-                    </tbody>
-                </table>
+        <!-- Orders Tab -->
+        <div class="tab-content" id="orders-tab">
+            <!-- Search and Filters -->
+            <div class="glass-card mb-4">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="search-container">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" class="search-input" id="searchInput" placeholder="Search orders...">
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="export-buttons">
+                            <button class="export-btn" id="exportExcel">
+                                <i class="fas fa-file-excel"></i> Export Excel
+                            </button>
+                            <button class="export-btn" id="exportPDF">
+                                <i class="fas fa-file-pdf"></i> Export PDF
+                            </button>
+                            <button class="export-btn" id="printTable">
+                                <i class="fas fa-print"></i> Print
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-12">
+                        <h5 class="mb-3">Filters</h5>
+                        <div class="filter-pills">
+                            <div class="filter-pill active" data-filter="all">All Orders</div>
+                            <div class="filter-pill" data-filter="delivery">Delivery</div>
+                            <div class="filter-pill" data-filter="pickup">Pickup</div>
+                            <div class="filter-pill" data-filter="void">Void</div>
+                            <div class="filter-pill" data-filter="active">Active</div>
+                            <div class="filter-pill" data-filter="late">Late</div>
+                            <div class="filter-pill" data-filter="completed">Completed</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <label for="branchFilter" class="form-label">Filter by Branch</label>
+                        <select class="form-select" id="branchFilter">
+                            <option value="">All Branches</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="agentFilter" class="form-label">Filter by Agent</label>
+                        <select class="form-select" id="agentFilter">
+                            <option value="">All Agents</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="statusFilter" class="form-label">Filter by Status</label>
+                        <select class="form-select" id="statusFilter">
+                            <option value="">All Statuses</option>
+                            <option value="active">Active</option>
+                            <option value="late">Late</option>
+                            <option value="completed">Completed</option>
+                            <option value="void">Void</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Orders Table -->
+            <div class="glass-card">
+                <h3 class="mb-4">Order Details</h3>
+                <div class="table-responsive">
+                    <table class="custom-table" id="ordersTable">
+                        <thead>
+                            <tr>
+                                <th>Branch</th>
+                                <th>Order No</th>
+                                <th>Date & Time</th>
+                                <th>Agent Name</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Void Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordersTableBody">
+                            <tr>
+                                <td colspan="8" class="text-center">No data available. Please upload an Excel file.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
-    </div>
-
+        
+        <!-- Analytics Tab -->
+        <div class="tab-content" id="analytics-tab">
+            <div class="row mb-4">
+                <div class="col-lg-6 mb-4">
+                    <div class="glass-card">
+                        <h3 class="mb-4">Orders by Branch</h3>
+                        <div class="chart-container">
+                            <canvas id="branchOrdersChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 mb-4">
+                    <div class="glass-card">
+                        <h3 class="mb-4">Orders by Agent</h3>
+                        <div class="chart-container">
+                            <canvas id="agentOrdersChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mb-4">
+                <div class="col-lg-12 mb-4">
+                    <div class="glass-card">
+                        <h3 class="mb-4">Order Value by Hour</h3>
+                        <div class="chart-container">
+                            <canvas id="hourlyValueChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Branches Tab -->
+        <div class="tab-content" id="branches-tab">
+            <div class="glass-card mb-4">
+                <h3 class="mb-4">Branch Performance</h3>
+                <div class="table-responsive">
+                    <table class="custom-table" id="branchesTable">
+                        <thead>
+                            <tr>
+                                <th>Branch Name</th>
+                                <th>Total Orders</th>
+                                <th>Total Value</th>
+                                <th>Average Order Value</th>
+                                <th>% Late Orders</th>
+                                <th>% Void Orders</th>
+                                <th>Top Agent</th>
+                            </tr>
+                        </thead>
+                        <tbody id="branchesTableBody">
+                            <tr>
+                                <td colspan="7" class="text-center">No data available. Please upload an Excel file.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Agents Tab -->
+        <div class="tab-content" id="agents-tab">
+            <div class="glass-card mb-4">
+                <h3 class="mb-4">Agent Performance</h3>
+                <div class="table-responsive">
+                    <table class="custom-table" id="agentsTable">
+                        <thead>
+                            <tr>
+                                <th>Agent Name</th>
+                                <th>Total Orders</th>
+                                <th>Total Value</th>
+                                <th>Average Order Value</th>
+                                <th>% Late Orders</th>
+                                <th>% Void Orders</th>
+                                <th>Primary Branch</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agentsTableBody">
+                            <tr>
+                                <td colspan="7" class="text-center">No data available. Please upload an Excel file.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Reports Tab -->
+        <div class="tab-content" id="reports-tab">
+            <div class="glass-card mb-4">
+                <h3 class="mb-4">Generate Reports</h3>
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="glass-card">
+                            <h5>Daily Sales Report</h5>
+                            <p>Generate a comprehensive report of daily sales and order metrics.</p>
+                            <button class="export-btn w-100" id="generateDailyReport">
+                                <i class="fas fa-file-pdf"></i> Generate Daily Report
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="glass-card">
+                            <h5>Weekly Performance Report</h5>
+                            <p>Generate a detailed weekly performance report for all branches.</p>
+                            <button class="export-btn w-100" id="generateWeeklyReport">
+                                <i class="fas fa-file-pdf"></i> Generate Weekly Report
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="glass-card">
+                            <h5>Branch Comparison Report</h5>
+                            <p>Compare performance metrics across all branches.</p>
+                            <button class="export-btn w-100" id="generateBranchReport">
+                                <i class="fas fa-file-pdf"></i> Generate Branch Report
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="glass-card">
+                            <h5>Agent Performance Report</h5>
+                            <p>Generate a detailed report on agent performance metrics.</p>
+                            <button class="export-btn w-100" id="generateAgentReport">
+                                <i class="fas fa-file-pdf"></i> Generate Agent Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Settings Tab -->
+        <div class="tab-content" id="settings-tab">
+            <div class="glass-card mb-4">
+                <h3 class="mb-4">Dashboard Settings</h3>
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="autoRefreshToggle" checked>
+                            <label class="form-check-label" for="autoRefreshToggle">
+                                Enable Auto Refresh
+                            </label>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="notificationsToggle" checked>
+                            <label class="form-check-label" for="notificationsToggle">
+                                Enable Notifications
+                            </label>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="animationsToggle" checked>
+                            <label class="form-check-label" for="animationsToggle">
+                                Enable Animations
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <label for="refreshInterval" class="form-label">Refresh Interval (seconds)</label>
+                        <select class="form-select" id="refreshInterval">
+                            <option value="30">30 seconds</option>
+                            <option value="60" selected>1 minute</option>
+                            <option value="300">5 minutes</option>
+                            <option value="600">10 minutes</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <button class="export-btn" id="saveSettings">
+                            <i class="fas fa-save"></i> Save Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
@@ -558,6 +1248,7 @@
         // Global variables
         let ordersData = [];
         let filteredData = [];
+        let charts = {};
         
         // DOM elements
         const fileUpload = document.getElementById('fileUpload');
@@ -572,6 +1263,10 @@
         const notification = document.getElementById('notification');
         const notificationMessage = document.getElementById('notification-message');
         const spinner = document.getElementById('spinner');
+        const toggleSidebarBtn = document.getElementById('toggleSidebar');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarMenu = document.querySelectorAll('.sidebar-menu a');
+        const tabContents = document.querySelectorAll('.tab-content');
         
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -596,6 +1291,53 @@
             exportExcelBtn.addEventListener('click', exportToExcel);
             exportPDFBtn.addEventListener('click', exportToPDF);
             printTableBtn.addEventListener('click', printTable);
+            
+            // Toggle sidebar
+            toggleSidebarBtn.addEventListener('click', function() {
+                sidebar.classList.toggle('active');
+            });
+            
+            // Sidebar menu
+            sidebarMenu.forEach(menuItem => {
+                menuItem.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // Update active menu item
+                    sidebarMenu.forEach(item => item.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Show corresponding tab
+                    const tabId = this.getAttribute('data-tab') + '-tab';
+                    tabContents.forEach(tab => {
+                        tab.classList.remove('active');
+                        if (tab.id === tabId) {
+                            tab.classList.add('active');
+                            
+                            // Initialize charts for analytics tab
+                            if (tabId === 'analytics-tab') {
+                                initializeAnalyticsCharts();
+                            }
+                        }
+                    });
+                    
+                    // Close sidebar on mobile
+                    if (window.innerWidth <= 992) {
+                        sidebar.classList.remove('active');
+                    }
+                });
+            });
+            
+            // Report buttons
+            document.getElementById('generateDailyReport').addEventListener('click', () => generateReport('daily'));
+            document.getElementById('generateWeeklyReport').addEventListener('click', () => generateReport('weekly'));
+            document.getElementById('generateBranchReport').addEventListener('click', () => generateReport('branch'));
+            document.getElementById('generateAgentReport').addEventListener('click', () => generateReport('agent'));
+            
+            // Settings
+            document.getElementById('saveSettings').addEventListener('click', saveSettings);
+            
+            // Initialize charts
+            initializeCharts();
         });
         
         // Load sample data for demonstration
@@ -637,6 +1379,8 @@
             populateFilters();
             updateMetrics();
             renderTable();
+            updateBranchTable();
+            updateAgentTable();
         }
         
         // Handle file upload
@@ -672,6 +1416,9 @@
                     populateFilters();
                     updateMetrics();
                     renderTable();
+                    updateBranchTable();
+                    updateAgentTable();
+                    updateCharts();
                     
                     showNotification('Excel file uploaded successfully!');
                 } catch (error) {
@@ -775,6 +1522,148 @@
             });
         }
         
+        // Update branch table
+        function updateBranchTable() {
+            const branches = {};
+            
+            // Group orders by branch
+            ordersData.forEach(order => {
+                if (!branches[order.branch]) {
+                    branches[order.branch] = {
+                        name: order.branch,
+                        totalOrders: 0,
+                        totalValue: 0,
+                        lateOrders: 0,
+                        voidOrders: 0,
+                        agents: {}
+                    };
+                }
+                
+                branches[order.branch].totalOrders++;
+                branches[order.branch].totalValue += order.amount;
+                
+                if (order.status === 'late') branches[order.branch].lateOrders++;
+                if (order.status === 'void') branches[order.branch].voidOrders++;
+                
+                if (!branches[order.branch].agents[order.agentName]) {
+                    branches[order.branch].agents[order.agentName] = 0;
+                }
+                branches[order.branch].agents[order.agentName]++;
+            });
+            
+            // Find top agent for each branch
+            Object.keys(branches).forEach(branchName => {
+                const branch = branches[branchName];
+                let topAgent = '';
+                let maxOrders = 0;
+                
+                Object.keys(branch.agents).forEach(agentName => {
+                    if (branch.agents[agentName] > maxOrders) {
+                        maxOrders = branch.agents[agentName];
+                        topAgent = agentName;
+                    }
+                });
+                
+                branch.topAgent = topAgent;
+                branch.avgOrderValue = branch.totalOrders > 0 ? branch.totalValue / branch.totalOrders : 0;
+                branch.lateOrdersPercent = branch.totalOrders > 0 ? (branch.lateOrders / branch.totalOrders * 100).toFixed(1) : 0;
+                branch.voidOrdersPercent = branch.totalOrders > 0 ? (branch.voidOrders / branch.totalOrders * 100).toFixed(1) : 0;
+            });
+            
+            // Render table
+            const tableBody = document.getElementById('branchesTableBody');
+            tableBody.innerHTML = '';
+            
+            Object.values(branches).forEach(branch => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${branch.name}</td>
+                    <td>${branch.totalOrders}</td>
+                    <td>$${branch.totalValue.toFixed(2)}</td>
+                    <td>$${branch.avgOrderValue.toFixed(2)}</td>
+                    <td>${branch.lateOrdersPercent}%</td>
+                    <td>${branch.voidOrdersPercent}%</td>
+                    <td>${branch.topAgent}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+            
+            if (Object.keys(branches).length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="7" class="text-center">No data available.</td></tr>';
+            }
+        }
+        
+        // Update agent table
+        function updateAgentTable() {
+            const agents = {};
+            
+            // Group orders by agent
+            ordersData.forEach(order => {
+                if (!agents[order.agentName]) {
+                    agents[order.agentName] = {
+                        name: order.agentName,
+                        totalOrders: 0,
+                        totalValue: 0,
+                        lateOrders: 0,
+                        voidOrders: 0,
+                        branches: {}
+                    };
+                }
+                
+                agents[order.agentName].totalOrders++;
+                agents[order.agentName].totalValue += order.amount;
+                
+                if (order.status === 'late') agents[order.agentName].lateOrders++;
+                if (order.status === 'void') agents[order.agentName].voidOrders++;
+                
+                if (!agents[order.agentName].branches[order.branch]) {
+                    agents[order.agentName].branches[order.branch] = 0;
+                }
+                agents[order.agentName].branches[order.branch]++;
+            });
+            
+            // Find primary branch for each agent
+            Object.keys(agents).forEach(agentName => {
+                const agent = agents[agentName];
+                let primaryBranch = '';
+                let maxOrders = 0;
+                
+                Object.keys(agent.branches).forEach(branchName => {
+                    if (agent.branches[branchName] > maxOrders) {
+                        maxOrders = agent.branches[branchName];
+                        primaryBranch = branchName;
+                    }
+                });
+                
+                agent.primaryBranch = primaryBranch;
+                agent.avgOrderValue = agent.totalOrders > 0 ? agent.totalValue / agent.totalOrders : 0;
+                agent.lateOrdersPercent = agent.totalOrders > 0 ? (agent.lateOrders / agent.totalOrders * 100).toFixed(1) : 0;
+                agent.voidOrdersPercent = agent.totalOrders > 0 ? (agent.voidOrders / agent.totalOrders * 100).toFixed(1) : 0;
+            });
+            
+            // Render table
+            const tableBody = document.getElementById('agentsTableBody');
+            tableBody.innerHTML = '';
+            
+            Object.values(agents).forEach(agent => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${agent.name}</td>
+                    <td>${agent.totalOrders}</td>
+                    <td>$${agent.totalValue.toFixed(2)}</td>
+                    <td>$${agent.avgOrderValue.toFixed(2)}</td>
+                    <td>${agent.lateOrdersPercent}%</td>
+                    <td>${agent.voidOrdersPercent}%</td>
+                    <td>${agent.primaryBranch}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+            
+            if (Object.keys(agents).length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="7" class="text-center">No data available.</td></tr>';
+            }
+        }
+        
         // Apply filters
         function applyFilters() {
             const searchTerm = searchInput.value.toLowerCase();
@@ -816,6 +1705,289 @@
             });
             
             renderTable();
+        }
+        
+        // Initialize charts
+        function initializeCharts() {
+            // Order Trends Chart
+            const orderTrendsCtx = document.getElementById('orderTrendsChart').getContext('2d');
+            charts.orderTrends = new Chart(orderTrendsCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'Orders',
+                        data: [65, 59, 80, 81, 56, 55, 40],
+                        backgroundColor: 'rgba(0, 255, 255, 0.2)',
+                        borderColor: 'rgba(0, 255, 255, 1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Order Distribution Chart
+            const orderDistributionCtx = document.getElementById('orderDistributionChart').getContext('2d');
+            charts.orderDistribution = new Chart(orderDistributionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Active', 'Late', 'Completed', 'Void'],
+                    datasets: [{
+                        data: [20, 5, 10, 5],
+                        backgroundColor: [
+                            'rgba(0, 255, 255, 0.7)',
+                            'rgba(255, 0, 64, 0.7)',
+                            'rgba(0, 255, 136, 0.7)',
+                            'rgba(255, 153, 0, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(0, 255, 255, 1)',
+                            'rgba(255, 0, 64, 1)',
+                            'rgba(0, 255, 136, 1)',
+                            'rgba(255, 153, 0, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Update charts with real data
+            updateCharts();
+        }
+        
+        // Update charts with real data
+        function updateCharts() {
+            if (!charts.orderTrends || !charts.orderDistribution) return;
+            
+            // Update order distribution chart
+            const activeOrders = ordersData.filter(order => order.status === 'active').length;
+            const lateOrders = ordersData.filter(order => order.status === 'late').length;
+            const completedOrders = ordersData.filter(order => order.status === 'completed').length;
+            const voidOrders = ordersData.filter(order => order.status === 'void').length;
+            
+            charts.orderDistribution.data.datasets[0].data = [activeOrders, lateOrders, completedOrders, voidOrders];
+            charts.orderDistribution.update();
+            
+            // Update order trends chart (simulate data for now)
+            const trendsData = Array(7).fill(0).map(() => Math.floor(Math.random() * 100));
+            charts.orderTrends.data.datasets[0].data = trendsData;
+            charts.orderTrends.update();
+        }
+        
+        // Initialize analytics charts
+        function initializeAnalyticsCharts() {
+            if (charts.branchOrders || charts.agentOrders || charts.hourlyValue) return;
+            
+            // Branch Orders Chart
+            const branchOrdersCtx = document.getElementById('branchOrdersChart').getContext('2d');
+            const branchData = {};
+            
+            ordersData.forEach(order => {
+                if (!branchData[order.branch]) {
+                    branchData[order.branch] = 0;
+                }
+                branchData[order.branch]++;
+            });
+            
+            charts.branchOrders = new Chart(branchOrdersCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(branchData),
+                    datasets: [{
+                        label: 'Orders',
+                        data: Object.values(branchData),
+                        backgroundColor: 'rgba(0, 255, 255, 0.7)',
+                        borderColor: 'rgba(0, 255, 255, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Agent Orders Chart
+            const agentOrdersCtx = document.getElementById('agentOrdersChart').getContext('2d');
+            const agentData = {};
+            
+            ordersData.forEach(order => {
+                if (!agentData[order.agentName]) {
+                    agentData[order.agentName] = 0;
+                }
+                agentData[order.agentName]++;
+            });
+            
+            // Sort agents by order count and take top 5
+            const sortedAgents = Object.entries(agentData)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+            
+            charts.agentOrders = new Chart(agentOrdersCtx, {
+                type: 'horizontalBar',
+                data: {
+                    labels: sortedAgents.map(agent => agent[0]),
+                    datasets: [{
+                        label: 'Orders',
+                        data: sortedAgents.map(agent => agent[1]),
+                        backgroundColor: 'rgba(255, 0, 255, 0.7)',
+                        borderColor: 'rgba(255, 0, 255, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Hourly Value Chart
+            const hourlyValueCtx = document.getElementById('hourlyValueChart').getContext('2d');
+            const hourlyData = Array(24).fill(0);
+            
+            ordersData.forEach(order => {
+                if (order.dateTime) {
+                    const hour = new Date(order.dateTime).getHours();
+                    hourlyData[hour] += order.amount;
+                }
+            });
+            
+            charts.hourlyValue = new Chart(hourlyValueCtx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+                    datasets: [{
+                        label: 'Order Value',
+                        data: hourlyData,
+                        backgroundColor: 'rgba(0, 255, 136, 0.2)',
+                        borderColor: 'rgba(0, 255, 136, 1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                callback: function(value) {
+                                    return '$' + value;
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         // Export to Excel
@@ -984,6 +2156,76 @@
             printWindow.document.close();
             
             showNotification('Print view opened successfully!');
+        }
+        
+        // Generate report
+        function generateReport(type) {
+            showSpinner();
+            
+            setTimeout(() => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                // Add title based on report type
+                let title = '';
+                switch(type) {
+                    case 'daily':
+                        title = 'Daily Sales Report';
+                        break;
+                    case 'weekly':
+                        title = 'Weekly Performance Report';
+                        break;
+                    case 'branch':
+                        title = 'Branch Comparison Report';
+                        break;
+                    case 'agent':
+                        title = 'Agent Performance Report';
+                        break;
+                }
+                
+                doc.setFontSize(18);
+                doc.text(title, 105, 15, { align: 'center' });
+                
+                // Add date
+                doc.setFontSize(12);
+                doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 105, 25, { align: 'center' });
+                
+                // Add summary
+                const totalOrders = ordersData.length;
+                const totalValue = ordersData.reduce((sum, order) => sum + order.amount, 0);
+                const avgOrderValue = totalOrders > 0 ? totalValue / totalOrders : 0;
+                
+                doc.setFontSize(14);
+                doc.text('Summary', 20, 40);
+                doc.setFontSize(12);
+                doc.text(`Total Orders: ${totalOrders}`, 20, 50);
+                doc.text(`Total Value: $${totalValue.toFixed(2)}`, 20, 58);
+                doc.text(`Average Order Value: $${avgOrderValue.toFixed(2)}`, 20, 66);
+                
+                // Save PDF
+                doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
+                
+                hideSpinner();
+                showNotification(`${title} generated successfully!`);
+            }, 1000);
+        }
+        
+        // Save settings
+        function saveSettings() {
+            const autoRefresh = document.getElementById('autoRefreshToggle').checked;
+            const notifications = document.getElementById('notificationsToggle').checked;
+            const animations = document.getElementById('animationsToggle').checked;
+            const refreshInterval = document.getElementById('refreshInterval').value;
+            
+            // In a real application, you would save these settings to a database or localStorage
+            localStorage.setItem('dashboardSettings', JSON.stringify({
+                autoRefresh,
+                notifications,
+                animations,
+                refreshInterval
+            }));
+            
+            showNotification('Settings saved successfully!');
         }
         
         // Show notification
