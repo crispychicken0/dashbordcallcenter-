@@ -3,28 +3,31 @@ import pandas as pd
 import json, datetime, os
 import io
 
-# Load the Excel file
+# Load the Excel file with the new data structure
 file_path = "/mnt/data/Orders Detail Track (6).xlsx"
 df = pd.read_excel(file_path, sheet_name="Orders Detail Track")
 
 # Clean and prepare data for JSON export
+# Map the new column structure
 columns_map = {
-    "Order no": "order_no",
+    "TIME ORDER": "order_time",
     "Date": "date",
-    "Outlet": "branch",
-    "Cus. Name": "customer_name",
-    "Cus Phone": "phone",
-    "Address": "address",
-    "Pay Method": "pay_method",
-    "Order Total": "order_total",
-    "Dispatch Time": "dispatch_time",
-    "Dilivery Time": "delivery_time",
-    "Type": "type",
-    "Agent Name": "agent_name",
-    "Incident ID": "incident_id",
-    "Incident Description": "incident_desc",
-    "Resolved?": "resolved"
+    "Order no": "order_no",
+    "PHONE NO.": "phone",
+    "NAME": "customer_name",
+    "BRANCH": "branch",
+    "AMOUNT": "amount",
+    "TYPE": "order_type",
+    "AGENT NAME": "agent_name",
+    "AREA": "area",
+    "VOID": "is_void",
+    "REASON OF VOID": "void_reason"
 }
+
+# Filter out rows with #VALUE! in the Order no column
+df = df[df['Order no'] != '#VALUE!']
+
+# Select available columns and rename
 available_cols = [c for c in df.columns if c in columns_map]
 df_small = df[available_cols].rename(columns=columns_map)
 
@@ -34,35 +37,37 @@ def try_parse_date(x):
         return pd.to_datetime(x).isoformat()
     except Exception:
         return str(x)
+
 df_small['date'] = df_small['date'].apply(try_parse_date)
+df_small['order_time'] = df_small['order_time'].apply(try_parse_date)
 
 # Fill NaNs for JSON cleanliness
 df_small = df_small.fillna("")
 
+# Add delivery time calculation (assuming it's in minutes)
+df_small['delivery_time'] = ""  # This field is not in the provided data
+
 # Compute metrics
 total_orders = len(df_small)
-total_value = df_small['order_total'].replace('', 0).astype(float).sum()
-
-# Calculate late orders
-def to_float_safe(v):
-    try:
-        return float(v)
-    except Exception:
-        return None
-
-df_small['delivery_time_num'] = df_small['delivery_time'].apply(to_float_safe)
-late_count = df_small['delivery_time_num'].apply(lambda x: x is not None and x>45).sum()
-late_pct = round((late_count/total_orders)*100,2) if total_orders>0 else 0.0
+total_value = df_small['amount'].replace('', 0).astype(float).sum()
+void_count = df_small['is_void'].apply(lambda x: x.lower() == 'yes' if isinstance(x, str) else False).sum()
+void_pct = round((void_count/total_orders)*100,2) if total_orders>0 else 0.0
 
 # Group by branch and agent
 by_branch = df_small.groupby('branch').agg(
     orders=('order_no','count'), 
-    value=('order_total', 'sum')
+    value=('amount', 'sum')
 ).reset_index().to_dict(orient='records')
 
 by_agent = df_small.groupby('agent_name').agg(
     orders=('order_no','count'), 
-    value=('order_total','sum')
+    value=('amount','sum')
+).reset_index().to_dict(orient='records')
+
+# Group by order type
+by_type = df_small.groupby('order_type').agg(
+    orders=('order_no','count'), 
+    value=('amount', 'sum')
 ).reset_index().to_dict(orient='records')
 
 # Prepare JSON data
@@ -70,13 +75,15 @@ data = {
     "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
     "total_orders": int(total_orders),
     "total_value": float(total_value),
-    "late_count": int(late_count),
-    "late_pct": float(late_pct),
+    "void_count": int(void_count),
+    "void_pct": float(void_pct),
     "by_branch": by_branch,
     "by_agent": by_agent,
+    "by_type": by_type,
     "orders": df_small.to_dict(orient='records'),
     "branches": list(df_small['branch'].unique()),
     "agents": list(df_small['agent_name'].unique()),
+    "order_types": list(df_small['order_type'].unique()),
     "min_date": df_small['date'].min(),
     "max_date": df_small['date'].max()
 }
@@ -87,7 +94,7 @@ html_template = """<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Crispy Chicken — Dashboard Management System</title>
+<title>Crispy Chicken — Order Management Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 <style>
@@ -101,6 +108,7 @@ body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-famil
 .badge-status{padding:.35rem .6rem;border-radius:999px;font-weight:700}
 .badge-active{background:rgba(122,90,255,0.12);color:#dcdfff}
 .badge-late{background:rgba(255,107,107,0.12);color:#ffd6d6}
+.badge-void{background:rgba(255,165,0,0.12);color:#ffe0b3}
 .filter-pill{padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.02);cursor:pointer;margin-right:8px}
 .filter-pill.active{background:linear-gradient(90deg,#7a5aff,#5ef3c8);color:#041018}
 /* System Dock */
@@ -190,24 +198,18 @@ body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-famil
     <!-- Order Type Filter -->
     <div class="filter-group">
       <label>Order Type</label>
-      <div>
-        <div class="form-check form-switch mb-2">
-          <input class="form-check-input" type="checkbox" id="deliveryCheck" checked>
-          <label class="form-check-label" for="deliveryCheck">Delivery</label>
-        </div>
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="pickupCheck" checked>
-          <label class="form-check-label" for="pickupCheck">Pickup</label>
-        </div>
-      </div>
+      <select id="typeFilter">
+        <option value="">All Types</option>
+        __TYPE_OPTIONS__
+      </select>
     </div>
     
-    <!-- Late Orders Filter -->
+    <!-- Void Orders Filter -->
     <div class="filter-group">
-      <label>Late Orders</label>
+      <label>Void Orders</label>
       <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="lateCheck">
-        <label class="form-check-label" for="lateCheck">Show Only Late Orders (>45 min)</label>
+        <input class="form-check-input" type="checkbox" id="voidCheck">
+        <label class="form-check-label" for="voidCheck">Show Only Void Orders</label>
       </div>
     </div>
     
@@ -236,7 +238,7 @@ body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-famil
     <button class="btn btn-sm btn-outline-light d-md-none" id="mobileMenuBtn">
       <i class="bi bi-list"></i>
     </button>
-    <h3>Crispy Chicken — Dashboard</h3>
+    <h3>Crispy Chicken — Order Management Dashboard</h3>
     <small class="text-muted">Loaded from Excel: Orders Detail Track (6).xlsx</small>
     <div class="ms-auto d-none d-md-flex">
       <button class="btn btn-sm btn-outline-light" id="refreshDataBtn">
@@ -260,14 +262,14 @@ body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-famil
     </div>
     <div class="col-md-3">
       <div class="glass">
-        <div class="text-muted">Late Orders (>45m)</div>
-        <div id="metricLate" class="metric-value">-</div>
+        <div class="text-muted">Void Orders</div>
+        <div id="metricVoid" class="metric-value">-</div>
       </div>
     </div>
     <div class="col-md-3">
       <div class="glass">
-        <div class="text-muted">Late %</div>
-        <div id="metricLatePct" class="metric-value">-</div>
+        <div class="text-muted">Void %</div>
+        <div id="metricVoidPct" class="metric-value">-</div>
       </div>
     </div>
   </div>
@@ -279,7 +281,7 @@ body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-famil
         <span class="filter-pill active" data-filter="all">All</span>
         <span class="filter-pill" data-filter="delivery">Delivery</span>
         <span class="filter-pill" data-filter="pickup">Pickup</span>
-        <span class="filter-pill" data-filter="late">Late >45m</span>
+        <span class="filter-pill" data-filter="void">Void</span>
       </div>
       <div class="ms-auto text-muted">Generated at: <span id="generatedAt"></span></div>
     </div>
@@ -295,7 +297,7 @@ body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-famil
             <th style="width:120px">Agent</th>
             <th style="width:90px">Type</th>
             <th style="width:110px">Amount</th>
-            <th style="width:110px">Delivery (min)</th>
+            <th style="width:110px">Area</th>
             <th style="width:120px">Status</th>
           </tr>
         </thead>
@@ -305,16 +307,22 @@ body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-famil
   </div>
   
   <div class="row g-3">
-    <div class="col-md-6">
+    <div class="col-md-4">
       <div class="glass">
         <h6>Orders by Branch</h6>
         <div id="byBranch"></div>
       </div>
     </div>
-    <div class="col-md-6">
+    <div class="col-md-4">
       <div class="glass">
         <h6>Orders by Agent</h6>
         <div id="byAgent"></div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="glass">
+        <h6>Orders by Type</h6>
+        <div id="byType"></div>
       </div>
     </div>
   </div>
@@ -351,16 +359,16 @@ function showNotification(message, duration = 3000) {
 function renderMetrics(){
   document.getElementById('metricTotal').textContent = DATA.total_orders;
   document.getElementById('metricValue').textContent = formatCurrency(DATA.total_value);
-  document.getElementById('metricLate').textContent = DATA.late_count;
-  document.getElementById('metricLatePct').textContent = DATA.late_pct + '%';
+  document.getElementById('metricVoid').textContent = DATA.void_count;
+  document.getElementById('metricVoidPct').textContent = DATA.void_pct + '%';
   document.getElementById('generatedAt').textContent = DATA.generated_at;
 }
 
 // Status badge
 function statusBadge(order){
-  const dt = order.delivery_time && order.delivery_time!='' ? parseFloat(order.delivery_time) : null;
-  if(dt && dt>45) return '<span class="badge-status badge-late">Late</span>';
-  if(order.resolved && order.resolved.toString().toLowerCase().startsWith('y')) return '<span class="badge-status badge-active">Resolved</span>';
+  if(order.is_void && order.is_void.toLowerCase() === 'yes') {
+    return '<span class="badge-status badge-void">Void</span>';
+  }
   return '<span class="badge-status badge-active">OK</span>';
 }
 
@@ -376,9 +384,9 @@ function renderTable(rows){
       <td>${r.branch}</td>
       <td>${r.customer_name}</td>
       <td>${r.agent_name}</td>
-      <td>${r.type}</td>
-      <td>${formatCurrency(r.order_total)}</td>
-      <td>${r.delivery_time}</td>
+      <td>${r.order_type}</td>
+      <td>${formatCurrency(r.amount)}</td>
+      <td>${r.area}</td>
       <td>${statusBadge(r)}</td>
     `;
     tbody.appendChild(tr);
@@ -409,6 +417,18 @@ function renderByAgent(){
   });
 }
 
+// Render by type
+function renderByType(){
+  const container = document.getElementById('byType');
+  container.innerHTML = '';
+  DATA.by_type.forEach(t=>{
+    const el = document.createElement('div');
+    el.className='d-flex justify-content-between py-1 border-bottom';
+    el.innerHTML = `<div class="text-muted">${t.order_type}</div><div><strong>${t.orders}</strong> • AED ${formatCurrency(t.value)}</div>`;
+    container.appendChild(el);
+  });
+}
+
 // Apply filters
 function applyFilters(){
   const searchTerm = document.getElementById('search').value.toLowerCase().trim();
@@ -417,9 +437,8 @@ function applyFilters(){
   const endDate = document.getElementById('endDate').value;
   const branch = document.getElementById('branchFilter').value;
   const agent = document.getElementById('agentFilter').value;
-  const deliveryChecked = document.getElementById('deliveryCheck').checked;
-  const pickupChecked = document.getElementById('pickupCheck').checked;
-  const lateChecked = document.getElementById('lateCheck').checked;
+  const type = document.getElementById('typeFilter').value;
+  const voidChecked = document.getElementById('voidCheck').checked;
   
   let rows = ORIGINAL_DATA.orders.slice();
   
@@ -429,9 +448,9 @@ function applyFilters(){
   }
   
   // Type filters
-  if(activeFilter === 'delivery') rows = rows.filter(r=>r.type && r.type.toLowerCase().includes('delivery'));
-  if(activeFilter === 'pickup') rows = rows.filter(r=>r.type && r.type.toLowerCase().includes('pick'));
-  if(activeFilter === 'late') rows = rows.filter(r=> r.delivery_time && parseFloat(r.delivery_time)>45 );
+  if(activeFilter === 'delivery') rows = rows.filter(r=>r.order_type && r.order_type.toLowerCase().includes('delivery'));
+  if(activeFilter === 'pickup') rows = rows.filter(r=>r.order_type && r.order_type.toLowerCase().includes('pickup'));
+  if(activeFilter === 'void') rows = rows.filter(r=> r.is_void && r.is_void.toLowerCase() === 'yes' );
   
   // Date range filter
   if(startDate) {
@@ -451,28 +470,21 @@ function applyFilters(){
     rows = rows.filter(r => r.agent_name === agent);
   }
   
-  // Order type checkboxes
-  if(!deliveryChecked && !pickupChecked) {
-    rows = []; // If both unchecked, show nothing
-  } else {
-    if(!deliveryChecked) {
-      rows = rows.filter(r => r.type && !r.type.toLowerCase().includes('delivery'));
-    }
-    if(!pickupChecked) {
-      rows = rows.filter(r => r.type && !r.type.toLowerCase().includes('pick'));
-    }
+  // Order type filter
+  if(type) {
+    rows = rows.filter(r => r.order_type === type);
   }
   
-  // Late orders checkbox
-  if(lateChecked) {
-    rows = rows.filter(r => r.delivery_time && parseFloat(r.delivery_time) > 45);
+  // Void orders filter
+  if(voidChecked) {
+    rows = rows.filter(r => r.is_void && r.is_void.toLowerCase() === 'yes');
   }
   
   // Update metrics based on filtered data
   DATA.total_orders = rows.length;
-  DATA.total_value = rows.reduce((sum, r) => sum + (parseFloat(r.order_total) || 0), 0);
-  DATA.late_count = rows.filter(r => r.delivery_time && parseFloat(r.delivery_time) > 45).length;
-  DATA.late_pct = rows.length > 0 ? round((DATA.late_count / rows.length) * 100, 2) : 0;
+  DATA.total_value = rows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+  DATA.void_count = rows.filter(r => r.is_void && r.is_void.toLowerCase() === 'yes').length;
+  DATA.void_pct = rows.length > 0 ? round((DATA.void_count / rows.length) * 100, 2) : 0;
   
   renderMetrics();
   renderTable(rows);
@@ -486,7 +498,7 @@ function round(value, decimals) {
 // Export to CSV
 function exportToCSV() {
   const rows = document.getElementById('ordersTbody').querySelectorAll('tr');
-  let csv = 'Order No,Date,Branch,Customer,Agent,Type,Amount,Delivery Time,Status\\n';
+  let csv = 'Order No,Date,Branch,Customer,Agent,Type,Amount,Area,Status\\n';
   
   rows.forEach(tr => {
     const tds = tr.querySelectorAll('td');
@@ -551,7 +563,7 @@ function exportToPDF() {
   });
   
   doc.autoTable({
-    head: [['Order No', 'Date', 'Branch', 'Customer', 'Agent', 'Type', 'Amount', 'Delivery (min)', 'Status']],
+    head: [['Order No', 'Date', 'Branch', 'Customer', 'Agent', 'Type', 'Amount', 'Area', 'Status']],
     body: tableData,
     startY: 30,
     theme: 'grid',
@@ -570,9 +582,8 @@ function resetFilters() {
   document.getElementById('endDate').value = '';
   document.getElementById('branchFilter').value = '';
   document.getElementById('agentFilter').value = '';
-  document.getElementById('deliveryCheck').checked = true;
-  document.getElementById('pickupCheck').checked = true;
-  document.getElementById('lateCheck').checked = false;
+  document.getElementById('typeFilter').value = '';
+  document.getElementById('voidCheck').checked = false;
   
   // Reset filter pills
   document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
@@ -581,13 +592,14 @@ function resetFilters() {
   // Reset data to original
   DATA.total_orders = ORIGINAL_DATA.total_orders;
   DATA.total_value = ORIGINAL_DATA.total_value;
-  DATA.late_count = ORIGINAL_DATA.late_count;
-  DATA.late_pct = ORIGINAL_DATA.late_pct;
+  DATA.void_count = ORIGINAL_DATA.void_count;
+  DATA.void_pct = ORIGINAL_DATA.void_pct;
   
   renderMetrics();
   renderTable(ORIGINAL_DATA.orders);
   renderByBranch();
   renderByAgent();
+  renderByType();
   showNotification('Filters reset successfully!');
 }
 
@@ -602,6 +614,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renderTable(DATA.orders);
   renderByBranch();
   renderByAgent();
+  renderByType();
   
   // Dock item clicks
   document.getElementById('dashboardBtn').addEventListener('click', function() {
@@ -649,9 +662,8 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('endDate').addEventListener('change', applyFilters);
   document.getElementById('branchFilter').addEventListener('change', applyFilters);
   document.getElementById('agentFilter').addEventListener('change', applyFilters);
-  document.getElementById('deliveryCheck').addEventListener('change', applyFilters);
-  document.getElementById('pickupCheck').addEventListener('change', applyFilters);
-  document.getElementById('lateCheck').addEventListener('change', applyFilters);
+  document.getElementById('typeFilter').addEventListener('change', applyFilters);
+  document.getElementById('voidCheck').addEventListener('change', applyFilters);
   
   // Filter pills
   document.querySelectorAll('.filter-pill').forEach(pill => {
@@ -690,14 +702,16 @@ document.addEventListener('DOMContentLoaded', function() {
 # Prepare options for dropdowns
 branch_options = "\n".join([f'<option value="{branch}">{branch}</option>' for branch in data['branches']])
 agent_options = "\n".join([f'<option value="{agent}">{agent}</option>' for agent in data['agents']])
+type_options = "\n".join([f'<option value="{order_type}">{order_type}</option>' for order_type in data['order_types']])
 
 # Replace placeholders in template
 html_content = html_template.replace("__BRANCH_OPTIONS__", branch_options)
 html_content = html_content.replace("__AGENT_OPTIONS__", agent_options)
+html_content = html_content.replace("__TYPE_OPTIONS__", type_options)
 html_content = html_content.replace("__DATA_JSON__", json.dumps(data))
 
 # Write to file
-out_path = Path("/mnt/data/dashboard_management_system.html")
+out_path = Path("/mnt/data/order_management_dashboard.html")
 out_path.write_text(html_content, encoding="utf-8")
 
-print(f"Dashboard Management System created successfully: {str(out_path)}")
+print(f"Order Management Dashboard created successfully: {str(out_path)}")
