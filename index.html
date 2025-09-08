@@ -820,6 +820,66 @@
             font-size: 0.7rem;
             font-weight: bold;
         }
+        
+        /* Edit Order Modal */
+        .modal-content {
+            background-color: rgba(20, 20, 20, 0.95);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .modal-header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .modal-footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .form-control, .form-select {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            background-color: rgba(255, 255, 255, 0.15);
+            border-color: var(--primary);
+            color: white;
+            box-shadow: 0 0 0 0.25rem rgba(0, 255, 255, 0.25);
+        }
+        
+        .form-label {
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        /* Action Buttons */
+        .action-btn {
+            padding: 4px 8px;
+            font-size: 0.8rem;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .edit-btn {
+            background-color: rgba(0, 255, 255, 0.2);
+            color: var(--primary);
+        }
+        
+        .edit-btn:hover {
+            background-color: rgba(0, 255, 255, 0.3);
+        }
+        
+        .refresh-btn {
+            background-color: rgba(0, 255, 136, 0.2);
+            color: var(--success);
+        }
+        
+        .refresh-btn:hover {
+            background-color: rgba(0, 255, 136, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -1123,6 +1183,9 @@
                             <button class="export-btn" id="printTable">
                                 <i class="fas fa-print"></i> Print
                             </button>
+                            <button class="export-btn refresh-btn" id="refreshData">
+                                <i class="fas fa-sync-alt"></i> Refresh Data
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1202,11 +1265,12 @@
                                 <th>Type</th>
                                 <th>Incident ID</th>
                                 <th>Incident De</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="ordersTableBody">
                             <tr>
-                                <td colspan="18" class="text-center">No data available. Please upload an Excel file.</td>
+                                <td colspan="19" class="text-center">No data available. Please upload an Excel file.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1406,6 +1470,109 @@
         </div>
     </main>
     
+    <!-- Edit Order Modal -->
+    <div class="modal fade" id="editOrderModal" tabindex="-1" aria-labelledby="editOrderModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editOrderModalLabel">Edit Order</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editOrderForm">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editOrderNo" class="form-label">Order No</label>
+                                <input type="text" class="form-control" id="editOrderNo" readonly>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editPosOrderNo" class="form-label">POS Order No</label>
+                                <input type="text" class="form-control" id="editPosOrderNo">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editDate" class="form-label">Date</label>
+                                <input type="datetime-local" class="form-control" id="editDate">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editOutlet" class="form-label">Outlet</label>
+                                <input type="text" class="form-control" id="editOutlet">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editCusName" class="form-label">Customer Name</label>
+                                <input type="text" class="form-control" id="editCusName">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editCusPhone" class="form-label">Customer Phone</label>
+                                <input type="text" class="form-control" id="editCusPhone">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editAddress" class="form-label">Address</label>
+                                <input type="text" class="form-control" id="editAddress">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editPayMethod" class="form-label">Payment Method</label>
+                                <select class="form-select" id="editPayMethod">
+                                    <option value="Cash">Cash</option>
+                                    <option value="Credit Card">Credit Card</option>
+                                    <option value="Debit Card">Debit Card</option>
+                                    <option value="Online">Online</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editFinalTotal" class="form-label">Final Total</label>
+                                <input type="number" class="form-control" id="editFinalTotal" step="0.01">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editAgentName" class="form-label">Agent Name</label>
+                                <input type="text" class="form-control" id="editAgentName">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editOrderedItem" class="form-label">Ordered Item</label>
+                                <input type="text" class="form-control" id="editOrderedItem">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editType" class="form-label">Type</label>
+                                <select class="form-select" id="editType">
+                                    <option value="Delivery">Delivery</option>
+                                    <option value="Pickup">Pickup</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="editStatus" class="form-label">Status</label>
+                                <select class="form-select" id="editStatus">
+                                    <option value="active">Active</option>
+                                    <option value="late">Late</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="void">Void</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="editIncidentDe" class="form-label">Incident Description</label>
+                                <input type="text" class="form-control" id="editIncidentDe">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveOrderBtn">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
@@ -1416,6 +1583,8 @@
         let charts = {};
         let visibleColumns = {};
         let lateOrderAlertInterval;
+        let currentEditingOrder = null;
+        let editOrderModal = null;
         
         // DOM elements
         const fileUpload = document.getElementById('fileUpload');
@@ -1427,6 +1596,7 @@
         const exportExcelBtn = document.getElementById('exportExcel');
         const exportPDFBtn = document.getElementById('exportPDF');
         const printTableBtn = document.getElementById('printTable');
+        const refreshDataBtn = document.getElementById('refreshData');
         const notification = document.getElementById('notification');
         const notificationMessage = document.getElementById('notification-message');
         const spinner = document.getElementById('spinner');
@@ -1439,9 +1609,14 @@
         const lateOrdersList = document.getElementById('lateOrdersList');
         const lateOrdersCount = document.getElementById('lateOrdersCount');
         const lateOrdersBadge = document.getElementById('lateOrdersBadge');
+        const saveOrderBtn = document.getElementById('saveOrderBtn');
+        const editOrderForm = document.getElementById('editOrderForm');
         
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Bootstrap modal
+            editOrderModal = new bootstrap.Modal(document.getElementById('editOrderModal'));
+            
             // Load sample data for demonstration
             loadSampleData();
             
@@ -1451,6 +1626,8 @@
             branchFilter.addEventListener('change', applyFilters);
             agentFilter.addEventListener('change', applyFilters);
             statusFilter.addEventListener('change', applyFilters);
+            refreshDataBtn.addEventListener('click', refreshAllData);
+            saveOrderBtn.addEventListener('click', saveOrderChanges);
             
             filterPills.forEach(pill => {
                 pill.addEventListener('click', function() {
@@ -2364,7 +2541,7 @@
             const tableBody = document.getElementById('ordersTableBody');
             
             if (filteredData.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="18" class="text-center">No data available.</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="19" class="text-center">No data available.</td></tr>';
                 return;
             }
             
@@ -2417,6 +2594,11 @@
                     <td>${order.type}</td>
                     <td>${order.incidentId}</td>
                     <td>${order.incidentDe}</td>
+                    <td>
+                        <button class="action-btn edit-btn" data-order-id="${order.orderNo}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                    </td>
                 `;
                 
                 // Add status badge to the last column if status is available
@@ -2430,6 +2612,97 @@
             
             // Update column visibility
             updateColumnVisibility();
+            
+            // Add event listeners to edit buttons
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const orderId = this.getAttribute('data-order-id');
+                    editOrder(orderId);
+                });
+            });
+        }
+        
+        // Edit order
+        function editOrder(orderId) {
+            // Find the order in the data
+            const order = ordersData.find(o => o.orderNo === orderId);
+            if (!order) return;
+            
+            // Set current editing order
+            currentEditingOrder = order;
+            
+            // Populate the form
+            document.getElementById('editOrderNo').value = order.orderNo;
+            document.getElementById('editPosOrderNo').value = order.posOrderNo;
+            document.getElementById('editDate').value = order.date ? new Date(order.date).toISOString().slice(0, 16) : '';
+            document.getElementById('editOutlet').value = order.outlet;
+            document.getElementById('editCusName').value = order.cusName;
+            document.getElementById('editCusPhone').value = order.cusPhone;
+            document.getElementById('editAddress').value = order.address;
+            document.getElementById('editPayMethod').value = order.payMethod;
+            document.getElementById('editFinalTotal').value = order.finalTotal;
+            document.getElementById('editAgentName').value = order.agentName;
+            document.getElementById('editOrderedItem').value = order.orderedItem;
+            document.getElementById('editType').value = order.type;
+            document.getElementById('editStatus').value = order.status || 'active';
+            document.getElementById('editIncidentDe').value = order.incidentDe;
+            
+            // Show the modal
+            editOrderModal.show();
+        }
+        
+        // Save order changes
+        function saveOrderChanges() {
+            if (!currentEditingOrder) return;
+            
+            // Get form data
+            const updatedOrder = {
+                ...currentEditingOrder,
+                posOrderNo: document.getElementById('editPosOrderNo').value,
+                date: document.getElementById('editDate').value,
+                outlet: document.getElementById('editOutlet').value,
+                cusName: document.getElementById('editCusName').value,
+                cusPhone: document.getElementById('editCusPhone').value,
+                address: document.getElementById('editAddress').value,
+                payMethod: document.getElementById('editPayMethod').value,
+                finalTotal: parseFloat(document.getElementById('editFinalTotal').value) || 0,
+                agentName: document.getElementById('editAgentName').value,
+                orderedItem: document.getElementById('editOrderedItem').value,
+                type: document.getElementById('editType').value,
+                status: document.getElementById('editStatus').value,
+                incidentDe: document.getElementById('editIncidentDe').value
+            };
+            
+            // Update the order in the data array
+            const index = ordersData.findIndex(o => o.orderNo === updatedOrder.orderNo);
+            if (index !== -1) {
+                ordersData[index] = updatedOrder;
+                
+                // Update filtered data if the order is in the filtered set
+                const filteredIndex = filteredData.findIndex(o => o.orderNo === updatedOrder.orderNo);
+                if (filteredIndex !== -1) {
+                    filteredData[filteredIndex] = updatedOrder;
+                }
+                
+                // Refresh all dashboard components
+                refreshAllData();
+                
+                // Close the modal
+                editOrderModal.hide();
+                
+                // Show success notification
+                showNotification(`Order #${updatedOrder.orderNo} updated successfully!`);
+            }
+        }
+        
+        // Refresh all data
+        function refreshAllData() {
+            updateMetrics();
+            renderTable();
+            updateBranchTable();
+            updateAgentTable();
+            checkLateOrders();
+            updateCharts();
         }
         
         // Update branch table
