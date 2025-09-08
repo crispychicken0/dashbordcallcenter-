@@ -1,717 +1,581 @@
-from pathlib import Path
-import pandas as pd
-import json, datetime, os
-import io
+import json
+import uuid
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Dict, List, Optional, Tuple
+import random
+import math
 
-# Load the Excel file with the new data structure
-file_path = "/mnt/data/Orders Detail Track (6).xlsx"
-df = pd.read_excel(file_path, sheet_name="Orders Detail Track")
+# ================= ENUMS =================
+class OrderStatus(Enum):
+    RECEIVED = "received"
+    IN_KITCHEN = "in_kitchen"
+    READY = "ready"
+    OUT_FOR_DELIVERY = "out_for_delivery"
+    DELIVERED = "delivered"
 
-# Clean and prepare data for JSON export
-# Map the new column structure
-columns_map = {
-    "TIME ORDER": "order_time",
-    "Date": "date",
-    "Order no": "order_no",
-    "PHONE NO.": "phone",
-    "NAME": "customer_name",
-    "BRANCH": "branch",
-    "AMOUNT": "amount",
-    "TYPE": "order_type",
-    "AGENT NAME": "agent_name",
-    "AREA": "area",
-    "VOID": "is_void",
-    "REASON OF VOID": "void_reason"
-}
+class OrderChannel(Enum):
+    PHONE = "phone"
+    WEB = "web"
+    APP = "app"
+    AGGREGATOR = "aggregator"
 
-# Filter out rows with #VALUE! in the Order no column
-df = df[df['Order no'] != '#VALUE!']
+class PaymentStatus(Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"
 
-# Select available columns and rename
-available_cols = [c for c in df.columns if c in columns_map]
-df_small = df[available_cols].rename(columns=columns_map)
+class DriverStatus(Enum):
+    AVAILABLE = "available"
+    ON_DELIVERY = "on_delivery"
+    OFFLINE = "offline"
 
-# Convert datelike strings to readable format
-def try_parse_date(x):
-    try:
-        return pd.to_datetime(x).isoformat()
-    except Exception:
-        return str(x)
+class KitchenStatus(Enum):
+    IDLE = "idle"
+    PREPARING = "preparing"
+    OVERLOADED = "overloaded"
 
-df_small['date'] = df_small['date'].apply(try_parse_date)
-df_small['order_time'] = df_small['order_time'].apply(try_parse_date)
+# ================= MODELS =================
+class MenuItem:
+    def __init__(self, id: str, name: str, price: float, prep_time: int, ingredients: Dict[str, int]):
+        self.id = id
+        self.name = name
+        self.price = price
+        self.prep_time = prep_time  # in minutes
+        self.ingredients = ingredients  # {ingredient_id: quantity}
 
-# Fill NaNs for JSON cleanliness
-df_small = df_small.fillna("")
+class OrderItem:
+    def __init__(self, menu_item: MenuItem, quantity: int):
+        self.menu_item = menu_item
+        self.quantity = quantity
 
-# Add delivery time calculation (assuming it's in minutes)
-df_small['delivery_time'] = ""  # This field is not in the provided data
+class Order:
+    def __init__(self, customer_id: str, items: List[OrderItem], channel: OrderChannel, 
+                 delivery_address: Tuple[float, float], payment_status: PaymentStatus = PaymentStatus.PENDING):
+        self.id = str(uuid.uuid4())
+        self.customer_id = customer_id
+        self.items = items
+        self.channel = channel
+        self.status = OrderStatus.RECEIVED
+        self.payment_status = payment_status
+        self.delivery_address = delivery_address
+        self.created_at = datetime.now()
+        self.outlet_id = None
+        self.driver_id = None
+        self.estimated_delivery = None
+        self.total_amount = sum(item.menu_item.price * item.quantity for item in items)
+        self.prep_start_time = None
+        self.ready_time = None
 
-# Compute metrics
-total_orders = len(df_small)
-total_value = df_small['amount'].replace('', 0).astype(float).sum()
-void_count = df_small['is_void'].apply(lambda x: x.lower() == 'yes' if isinstance(x, str) else False).sum()
-void_pct = round((void_count/total_orders)*100,2) if total_orders>0 else 0.0
+class Outlet:
+    def __init__(self, id: str, name: str, location: Tuple[float, float], capacity: int):
+        self.id = id
+        self.name = name
+        self.location = location  # (latitude, longitude)
+        self.capacity = capacity
+        self.current_orders = []
+        self.inventory = {}
+        self.staff = {}
+        self.kitchen_status = KitchenStatus.IDLE
 
-# Group by branch and agent
-by_branch = df_small.groupby('branch').agg(
-    orders=('order_no','count'), 
-    value=('amount', 'sum')
-).reset_index().to_dict(orient='records')
+class Driver:
+    def __init__(self, id: str, name: str, vehicle_type: str, location: Tuple[float, float]):
+        self.id = id
+        self.name = name
+        self.vehicle_type = vehicle_type
+        self.location = location
+        self.status = DriverStatus.AVAILABLE
+        self.current_order = None
+        self.rating = 4.5
+        self.orders_completed = 0
 
-by_agent = df_small.groupby('agent_name').agg(
-    orders=('order_no','count'), 
-    value=('amount','sum')
-).reset_index().to_dict(orient='records')
+class InventoryItem:
+    def __init__(self, item_id: str, name: str, quantity: int, unit: str, reorder_threshold: int):
+        self.item_id = item_id
+        self.name = name
+        self.quantity = quantity
+        self.unit = unit
+        self.reorder_threshold = reorder_threshold
 
-# Group by order type
-by_type = df_small.groupby('order_type').agg(
-    orders=('order_no','count'), 
-    value=('amount', 'sum')
-).reset_index().to_dict(orient='records')
+class Staff:
+    def __init__(self, id: str, name: str, role: str, hourly_rate: float):
+        self.id = id
+        self.name = name
+        self.role = role  # "chef", "manager", "cashier"
+        self.hourly_rate = hourly_rate
+        self.current_order = None
+        self.shift_start = None
+        self.shift_end = None
 
-# Prepare JSON data
-data = {
-    "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
-    "total_orders": int(total_orders),
-    "total_value": float(total_value),
-    "void_count": int(void_count),
-    "void_pct": float(void_pct),
-    "by_branch": by_branch,
-    "by_agent": by_agent,
-    "by_type": by_type,
-    "orders": df_small.to_dict(orient='records'),
-    "branches": list(df_small['branch'].unique()),
-    "agents": list(df_small['agent_name'].unique()),
-    "order_types": list(df_small['order_type'].unique()),
-    "min_date": df_small['date'].min(),
-    "max_date": df_small['date'].max()
-}
-
-# Create HTML dashboard with system dock
-html_template = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Crispy Chicken — Order Management Dashboard</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-<style>
-:root{ --bg:#0b0f14; --muted:#98a0a6; --accent:#7a5aff; --glass:rgba(255,255,255,0.04); --dock:#0d1117; --dock-hover:#161b22 }
-body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-family:Inter,system-ui,Arial;padding:0;margin:0}
-.glass{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);backdrop-filter:blur(8px);border-radius:12px;padding:16px}
-.metric-value{font-size:1.6rem;font-weight:700;background:linear-gradient(90deg,#7a5aff,#5ef3c8);-webkit-background-clip:text;color:transparent}
-.table-fixed tbody{max-height:360px;overflow:auto;display:block}
-.table-fixed thead, .table-fixed tbody tr {display:table;width:100%;table-layout:fixed}
-.table-fixed thead {width:100%}
-.badge-status{padding:.35rem .6rem;border-radius:999px;font-weight:700}
-.badge-active{background:rgba(122,90,255,0.12);color:#dcdfff}
-.badge-late{background:rgba(255,107,107,0.12);color:#ffd6d6}
-.badge-void{background:rgba(255,165,0,0.12);color:#ffe0b3}
-.filter-pill{padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.02);cursor:pointer;margin-right:8px}
-.filter-pill.active{background:linear-gradient(90deg,#7a5aff,#5ef3c8);color:#041018}
-/* System Dock */
-.dock{position:fixed;bottom:0;left:0;width:100%;height:60px;background:var(--dock);border-top:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;gap:15px;z-index:1000}
-.dock-item{width:45px;height:45px;border-radius:8px;background:var(--dock-hover);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s}
-.dock-item:hover{background:var(--accent);transform:scale(1.1)}
-.dock-item.active{background:var(--accent)}
-.dock-item i{font-size:1.2rem;color:#e9eef3}
-/* Sidebar */
-.sidebar{position:fixed;top:0;left:0;width:300px;height:100%;background:var(--dock);z-index:999;transform:translateX(-100%);transition:transform 0.3s;overflow-y:auto}
-.sidebar.active{transform:translateX(0)}
-.sidebar-header{padding:20px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between}
-.sidebar-content{padding:20px}
-/* Main Content */
-.main-content{padding:20px;padding-bottom:100px}
-/* Filters */
-.filter-group{margin-bottom:20px}
-.filter-group label{display:block;margin-bottom:5px;color:#98a0a6;font-size:0.9rem}
-.filter-group select, .filter-group input{width:100%;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e9eef3}
-/* Export Buttons */
-.export-btn{width:100%;margin-bottom:10px;display:flex;align-items:center;gap:8px;justify-content:center;padding:10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e9eef3;cursor:pointer;transition:all 0.2s}
-.export-btn:hover{background:rgba(122,90,255,0.2);border-color:var(--accent)}
-/* Date Range Picker */
-.date-range{display:flex;gap:10px}
-.date-range input{flex:1}
-/* Notification */
-.notification{position:fixed;bottom:80px;right:20px;padding:15px 20px;background:rgba(122,90,255,0.9);color:white;border-radius:8px;transform:translateY(100px);transition:transform 0.3s;z-index:1001}
-.notification.show{transform:translateY(0)}
-</style>
-</head>
-<body>
-<!-- System Dock -->
-<div class="dock">
-  <div class="dock-item active" id="dashboardBtn" title="Dashboard">
-    <i class="bi bi-speedometer2"></i>
-  </div>
-  <div class="dock-item" id="filtersBtn" title="Filters">
-    <i class="bi bi-funnel"></i>
-  </div>
-  <div class="dock-item" id="exportBtn" title="Export">
-    <i class="bi bi-download"></i>
-  </div>
-  <div class="dock-item" id="refreshBtn" title="Refresh Data">
-    <i class="bi bi-arrow-clockwise"></i>
-  </div>
-  <div class="dock-item" id="settingsBtn" title="Settings">
-    <i class="bi bi-gear"></i>
-  </div>
-</div>
-
-<!-- Sidebar -->
-<div class="sidebar" id="sidebar">
-  <div class="sidebar-header">
-    <h5>Dashboard Controls</h5>
-    <button class="btn btn-sm btn-link text-light" id="closeSidebar">
-      <i class="bi bi-x-lg"></i>
-    </button>
-  </div>
-  <div class="sidebar-content">
-    <!-- Date Range Filter -->
-    <div class="filter-group">
-      <label>Date Range</label>
-      <div class="date-range">
-        <input type="date" id="startDate" />
-        <input type="date" id="endDate" />
-      </div>
-    </div>
+# ================= CORE SYSTEM =================
+class RestaurantDeliverySystem:
+    def __init__(self):
+        self.orders: Dict[str, Order] = {}
+        self.outlets: Dict[str, Outlet] = {}
+        self.drivers: Dict[str, Driver] = {}
+        self.menu_items: Dict[str, MenuItem] = {}
+        self.inventory_items: Dict[str, InventoryItem] = {}
+        self.staff: Dict[str, Staff] = {}
+        self.order_history = []
+        self.delivery_partners = {}
+        
+    # ================= INITIALIZATION =================
+    def initialize_system(self):
+        # Add menu items
+        self.menu_items["pizza_margherita"] = MenuItem(
+            "pizza_margherita", "Pizza Margherita", 12.99, 15, 
+            {"flour": 1, "cheese": 150, "tomato": 100}
+        )
+        self.menu_items["burger"] = MenuItem(
+            "burger", "Classic Burger", 8.99, 10,
+            {"bread": 1, "beef": 150, "lettuce": 50, "tomato": 30}
+        )
+        self.menu_items["pasta_carbonara"] = MenuItem(
+            "pasta_carbonara", "Pasta Carbonara", 10.99, 12,
+            {"pasta": 200, "bacon": 100, "cream": 100, "cheese": 50}
+        )
+        self.menu_items["salad"] = MenuItem(
+            "salad", "Garden Salad", 7.99, 8,
+            {"lettuce": 100, "tomato": 80, "cucumber": 60, "dressing": 30}
+        )
+        
+        # Add inventory items
+        self.inventory_items["flour"] = InventoryItem("flour", "Flour", 50, "kg", 10)
+        self.inventory_items["cheese"] = InventoryItem("cheese", "Cheese", 30, "kg", 5)
+        self.inventory_items["tomato"] = InventoryItem("tomato", "Tomato", 40, "kg", 8)
+        self.inventory_items["bread"] = InventoryItem("bread", "Bread", 30, "loaves", 5)
+        self.inventory_items["beef"] = InventoryItem("beef", "Ground Beef", 25, "kg", 8)
+        self.inventory_items["lettuce"] = InventoryItem("lettuce", "Lettuce", 20, "kg", 5)
+        self.inventory_items["cucumber"] = InventoryItem("cucumber", "Cucumber", 15, "kg", 4)
+        self.inventory_items["dressing"] = InventoryItem("dressing", "Salad Dressing", 10, "L", 3)
+        self.inventory_items["pasta"] = InventoryItem("pasta", "Pasta", 20, "kg", 6)
+        self.inventory_items["bacon"] = InventoryItem("bacon", "Bacon", 15, "kg", 4)
+        self.inventory_items["cream"] = InventoryItem("cream", "Cream", 12, "L", 3)
+        
+        # Add outlets
+        self.outlets["downtown"] = Outlet("downtown", "Downtown Branch", (40.7128, -74.0060), 10)
+        self.outlets["westside"] = Outlet("westside", "Westside Branch", (40.7489, -73.9680), 8)
+        self.outlets["uptown"] = Outlet("uptown", "Uptown Branch", (40.7831, -73.9712), 12)
+        
+        # Add drivers
+        self.drivers["driver1"] = Driver("driver1", "John Smith", "motorcycle", (40.7128, -74.0060))
+        self.drivers["driver2"] = Driver("driver2", "Sarah Johnson", "car", (40.7489, -73.9680))
+        self.drivers["driver3"] = Driver("driver3", "Mike Brown", "van", (40.7831, -73.9712))
+        self.drivers["driver4"] = Driver("driver4", "Emily Davis", "motorcycle", (40.7128, -74.0060))
+        self.drivers["driver5"] = Driver("driver5", "David Wilson", "car", (40.7489, -73.9680))
+        
+        # Add staff
+        self.staff["chef1"] = Staff("chef1", "Chef Marco", "chef", 25.0)
+        self.staff["chef2"] = Staff("chef2", "Chef Luis", "chef", 22.0)
+        self.staff["chef3"] = Staff("chef3", "Chef Sofia", "chef", 23.0)
+        self.staff["manager1"] = Staff("manager1", "Manager Anna", "manager", 30.0)
+        self.staff["cashier1"] = Staff("cashier1", "Cashier Tom", "cashier", 15.0)
+        
+        # Assign staff to outlets
+        self.outlets["downtown"].staff = {"chef1": self.staff["chef1"], "manager1": self.staff["manager1"]}
+        self.outlets["westside"].staff = {"chef2": self.staff["chef2"], "cashier1": self.staff["cashier1"]}
+        self.outlets["uptown"].staff = {"chef3": self.staff["chef3"]}
+        
+        # Initialize inventory in outlets
+        for outlet in self.outlets.values():
+            for item_id, item in self.inventory_items.items():
+                outlet.inventory[item_id] = InventoryItem(
+                    item_id, item.name, item.quantity, item.unit, item.reorder_threshold
+                )
+        
+        print("Restaurant Delivery System initialized successfully!")
     
-    <!-- Branch Filter -->
-    <div class="filter-group">
-      <label>Branch</label>
-      <select id="branchFilter">
-        <option value="">All Branches</option>
-        __BRANCH_OPTIONS__
-      </select>
-    </div>
+    # ================= ORDER MANAGEMENT =================
+    def create_order(self, customer_id: str, item_ids: List[str], quantities: List[int], 
+                     channel: OrderChannel, delivery_address: Tuple[float, float]) -> Optional[Order]:
+        # Validate menu items
+        if not all(item_id in self.menu_items for item_id in item_ids):
+            print("Error: Invalid menu item ID")
+            return None
+            
+        # Create order items
+        order_items = []
+        for i, item_id in enumerate(item_ids):
+            order_items.append(OrderItem(self.menu_items[item_id], quantities[i]))
+            
+        # Create new order
+        order = Order(customer_id, order_items, channel, delivery_address)
+        
+        # Distribute to outlet
+        outlet = self._distribute_order_to_outlet(order)
+        if not outlet:
+            print("Error: No available outlets")
+            return None
+            
+        order.outlet_id = outlet.id
+        outlet.current_orders.append(order.id)
+        self.orders[order.id] = order
+        
+        # Update inventory
+        self._update_inventory(order)
+        
+        # Calculate estimated delivery time
+        self._calculate_delivery_time(order)
+        
+        # Assign to kitchen
+        self._assign_to_kitchen(order)
+        
+        print(f"Order {order.id} created from {channel.value} channel")
+        return order
     
-    <!-- Agent Filter -->
-    <div class="filter-group">
-      <label>Agent</label>
-      <select id="agentFilter">
-        <option value="">All Agents</option>
-        __AGENT_OPTIONS__
-      </select>
-    </div>
+    def _distribute_order_to_outlet(self, order: Order) -> Optional[Outlet]:
+        # Find nearest outlet with capacity
+        min_distance = float('inf')
+        selected_outlet = None
+        
+        for outlet in self.outlets.values():
+            # Calculate distance using Haversine formula
+            distance = self._haversine_distance(outlet.location, order.delivery_address)
+            load_factor = len(outlet.current_orders) / outlet.capacity
+            
+            if load_factor < 1.0 and distance < min_distance:
+                min_distance = distance
+                selected_outlet = outlet
+                
+        return selected_outlet
     
-    <!-- Order Type Filter -->
-    <div class="filter-group">
-      <label>Order Type</label>
-      <select id="typeFilter">
-        <option value="">All Types</option>
-        __TYPE_OPTIONS__
-      </select>
-    </div>
+    def _haversine_distance(self, loc1: Tuple[float, float], loc2: Tuple[float, float]) -> float:
+        # Calculate distance between two lat/lon points in km
+        lat1, lon1 = loc1
+        lat2, lon2 = loc2
+        
+        R = 6371  # Earth radius in km
+        dLat = math.radians(lat2 - lat1)
+        dLon = math.radians(lon2 - lon1)
+        a = math.sin(dLat/2) * math.sin(dLat/2) + \
+            math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * \
+            math.sin(dLon/2) * math.sin(dLon/2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        return R * c
     
-    <!-- Void Orders Filter -->
-    <div class="filter-group">
-      <label>Void Orders</label>
-      <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="voidCheck">
-        <label class="form-check-label" for="voidCheck">Show Only Void Orders</label>
-      </div>
-    </div>
+    def _update_inventory(self, order: Order):
+        outlet = self.outlets[order.outlet_id]
+        
+        for order_item in order.items:
+            for ingredient_id, required_qty in order_item.menu_item.ingredients.items():
+                if ingredient_id in outlet.inventory:
+                    outlet.inventory[ingredient_id].quantity -= required_qty * order_item.quantity
+                    
+                    # Check if reorder needed
+                    if outlet.inventory[ingredient_id].quantity < outlet.inventory[ingredient_id].reorder_threshold:
+                        print(f"Reorder needed for {outlet.inventory[ingredient_id].name} at {outlet.name}")
     
-    <!-- Export Options -->
-    <h6 class="mt-4 mb-3">Export Options</h6>
-    <div class="export-btn" id="exportCSV">
-      <i class="bi bi-filetype-csv"></i> Export to CSV
-    </div>
-    <div class="export-btn" id="exportExcel">
-      <i class="bi bi-filetype-excel"></i> Export to Excel
-    </div>
-    <div class="export-btn" id="exportPDF">
-      <i class="bi bi-filetype-pdf"></i> Export to PDF
-    </div>
+    def _calculate_delivery_time(self, order: Order):
+        outlet = self.outlets[order.outlet_id]
+        
+        # Calculate preparation time
+        prep_time = sum(item.menu_item.prep_time * item.quantity for item in order.items)
+        
+        # Find nearest available driver
+        available_drivers = [d for d in self.drivers.values() if d.status == DriverStatus.AVAILABLE]
+        if not available_drivers:
+            # Estimate based on average driver time
+            driver_time = 30
+        else:
+            # Find nearest driver
+            nearest_driver = min(available_drivers, 
+                                key=lambda d: self._haversine_distance(d.location, outlet.location))
+            driver_time = self._haversine_distance(nearest_driver.location, outlet.location) * 2  # 2 min/km
+        
+        # Add buffer time
+        buffer = 10
+        total_time = prep_time + driver_time + buffer
+        
+        order.estimated_delivery = datetime.now() + timedelta(minutes=total_time)
     
-    <!-- Reset Filters -->
-    <div class="export-btn" id="resetFilters">
-      <i class="bi bi-arrow-counterclockwise"></i> Reset All Filters
-    </div>
-  </div>
-</div>
-
-<!-- Main Dashboard Content -->
-<div class="main-content">
-  <div class="d-flex align-items-center gap-3 mb-3">
-    <button class="btn btn-sm btn-outline-light d-md-none" id="mobileMenuBtn">
-      <i class="bi bi-list"></i>
-    </button>
-    <h3>Crispy Chicken — Order Management Dashboard</h3>
-    <small class="text-muted">Loaded from Excel: Orders Detail Track (6).xlsx</small>
-    <div class="ms-auto d-none d-md-flex">
-      <button class="btn btn-sm btn-outline-light" id="refreshDataBtn">
-        <i class="bi bi-arrow-clockwise"></i> Refresh
-      </button>
-    </div>
-  </div>
-  
-  <div class="row g-3 mb-3">
-    <div class="col-md-3">
-      <div class="glass">
-        <div class="text-muted">Total Orders</div>
-        <div id="metricTotal" class="metric-value">-</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="glass">
-        <div class="text-muted">Total Value (AED)</div>
-        <div id="metricValue" class="metric-value">-</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="glass">
-        <div class="text-muted">Void Orders</div>
-        <div id="metricVoid" class="metric-value">-</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="glass">
-        <div class="text-muted">Void %</div>
-        <div id="metricVoidPct" class="metric-value">-</div>
-      </div>
-    </div>
-  </div>
-  
-  <div class="glass mb-3">
-    <div class="d-flex align-items-center gap-2 mb-2">
-      <input id="search" class="form-control form-control-sm" style="max-width:360px" placeholder="Search order no, customer, branch, agent..." />
-      <div class="ms-2">
-        <span class="filter-pill active" data-filter="all">All</span>
-        <span class="filter-pill" data-filter="delivery">Delivery</span>
-        <span class="filter-pill" data-filter="pickup">Pickup</span>
-        <span class="filter-pill" data-filter="void">Void</span>
-      </div>
-      <div class="ms-auto text-muted">Generated at: <span id="generatedAt"></span></div>
-    </div>
+    def _assign_to_kitchen(self, order: Order):
+        outlet = self.outlets[order.outlet_id]
+        outlet.kitchen_status = KitchenStatus.PREPARING
+        order.prep_start_time = datetime.now()
+        order.status = OrderStatus.IN_KITCHEN
+        
+        # Assign chef to order
+        available_chefs = [s for s in outlet.staff.values() if s.role == "chef" and s.current_order is None]
+        if available_chefs:
+            chef = random.choice(available_chefs)
+            chef.current_order = order.id
+            print(f"Order {order.id} assigned to chef {chef.name}")
+        
+        # Simulate preparation time
+        prep_time = sum(item.menu_item.prep_time * item.quantity for item in order.items)
+        
+        # Schedule order to be ready
+        from threading import Timer
+        Timer(prep_time * 60, self._mark_order_ready, args=[order.id]).start()
     
-    <div class="table-responsive">
-      <table class="table table-borderless align-middle" id="ordersTable">
-        <thead>
-          <tr class="text-muted small">
-            <th style="width:120px">Order no</th>
-            <th style="width:140px">Date</th>
-            <th>Branch</th>
-            <th>Customer</th>
-            <th style="width:120px">Agent</th>
-            <th style="width:90px">Type</th>
-            <th style="width:110px">Amount</th>
-            <th style="width:110px">Area</th>
-            <th style="width:120px">Status</th>
-          </tr>
-        </thead>
-        <tbody id="ordersTbody"></tbody>
-      </table>
-    </div>
-  </div>
-  
-  <div class="row g-3">
-    <div class="col-md-4">
-      <div class="glass">
-        <h6>Orders by Branch</h6>
-        <div id="byBranch"></div>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="glass">
-        <h6>Orders by Agent</h6>
-        <div id="byAgent"></div>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="glass">
-        <h6>Orders by Type</h6>
-        <div id="byType"></div>
-      </div>
-    </div>
-  </div>
-</div>
+    def _mark_order_ready(self, order_id: str):
+        if order_id in self.orders:
+            order = self.orders[order_id]
+            order.status = OrderStatus.READY
+            order.ready_time = datetime.now()
+            
+            outlet = self.outlets[order.outlet_id]
+            outlet.kitchen_status = KitchenStatus.IDLE
+            
+            # Release chef
+            for staff in outlet.staff.values():
+                if staff.current_order == order_id:
+                    staff.current_order = None
+                    break
+            
+            print(f"Order {order_id} is ready for delivery")
+            
+            # Assign driver
+            self._assign_driver(order_id)
+    
+    def _assign_driver(self, order_id: str):
+        order = self.orders[order_id]
+        outlet = self.outlets[order.outlet_id]
+        
+        # Find nearest available driver
+        available_drivers = [d for d in self.drivers.values() if d.status == DriverStatus.AVAILABLE]
+        if not available_drivers:
+            print("No available drivers!")
+            return
+            
+        # Find nearest driver
+        nearest_driver = min(available_drivers, 
+                            key=lambda d: self._haversine_distance(d.location, outlet.location))
+        
+        # Assign driver
+        nearest_driver.current_order = order_id
+        nearest_driver.status = DriverStatus.ON_DELIVERY
+        order.driver_id = nearest_driver.id
+        
+        # Calculate delivery time
+        delivery_time = self._haversine_distance(outlet.location, order.delivery_address) * 2
+        
+        # Schedule delivery completion
+        from threading import Timer
+        Timer(delivery_time * 60, self._complete_delivery, args=[order_id]).start()
+        
+        print(f"Driver {nearest_driver.name} assigned to order {order_id}")
+    
+    def _complete_delivery(self, order_id: str):
+        if order_id in self.orders:
+            order = self.orders[order_id]
+            order.status = OrderStatus.DELIVERED
+            
+            # Release driver
+            driver = self.drivers[order.driver_id]
+            driver.status = DriverStatus.AVAILABLE
+            driver.current_order = None
+            driver.orders_completed += 1
+            
+            # Remove from outlet
+            outlet = self.outlets[order.outlet_id]
+            if order_id in outlet.current_orders:
+                outlet.current_orders.remove(order_id)
+            
+            # Add to order history
+            self.order_history.append(order)
+            
+            print(f"Order {order_id} delivered successfully")
+    
+    # ================= ORDER STATUS MANAGEMENT =================
+    def update_order_status(self, order_id: str, status: OrderStatus):
+        if order_id in self.orders:
+            self.orders[order_id].status = status
+            print(f"Order {order_id} status updated to {status.value}")
+    
+    def get_order_status(self, order_id: str) -> Optional[OrderStatus]:
+        return self.orders.get(order_id, {}).status if order_id in self.orders else None
+    
+    def cancel_order(self, order_id: str):
+        if order_id in self.orders:
+            order = self.orders[order_id]
+            
+            # If order is in kitchen, release chef
+            if order.status == OrderStatus.IN_KITCHEN:
+                outlet = self.outlets[order.outlet_id]
+                for staff in outlet.staff.values():
+                    if staff.current_order == order_id:
+                        staff.current_order = None
+                        break
+            
+            # If driver is assigned, release driver
+            if order.driver_id:
+                driver = self.drivers[order.driver_id]
+                driver.current_order = None
+                driver.status = DriverStatus.AVAILABLE
+            
+            # Remove from outlet
+            outlet = self.outlets[order.outlet_id]
+            if order_id in outlet.current_orders:
+                outlet.current_orders.remove(order_id)
+            
+            # Remove from system
+            del self.orders[order_id]
+            print(f"Order {order_id} cancelled successfully")
+    
+    # ================= REAL-TIME MONITORING =================
+    def get_real_time_dashboard(self) -> Dict:
+        return {
+            "total_orders": len(self.orders),
+            "active_orders": sum(1 for o in self.orders.values() if o.status in [OrderStatus.IN_KITCHEN, OrderStatus.READY]),
+            "drivers_on_delivery": sum(1 for d in self.drivers.values() if d.status == DriverStatus.ON_DELIVERY),
+            "outlet_load": {outlet.id: len(outlet.current_orders) for outlet in self.outlets.values()},
+            "kitchen_status": {outlet.id: outlet.kitchen_status.value for outlet in self.outlets.values()},
+            "inventory_levels": {outlet.id: {item.name: item.quantity for item in outlet.inventory.values()} 
+                               for outlet in self.outlets.values()}
+        }
+    
+    def get_driver_locations(self) -> Dict:
+        return {driver_id: driver.location for driver_id, driver in self.drivers.items()}
+    
+    def get_order_details(self, order_id: str) -> Optional[Dict]:
+        if order_id in self.orders:
+            order = self.orders[order_id]
+            return {
+                "id": order.id,
+                "status": order.status.value,
+                "channel": order.channel.value,
+                "total_amount": order.total_amount,
+                "items": [{"name": item.menu_item.name, "quantity": item.quantity} for item in order.items],
+                "delivery_address": order.delivery_address,
+                "estimated_delivery": order.estimated_delivery.isoformat() if order.estimated_delivery else None,
+                "driver": self.drivers[order.driver_id].name if order.driver_id else None
+            }
+        return None
+    
+    # ================= REPORTING =================
+    def generate_sales_report(self, start_date: datetime, end_date: datetime) -> Dict:
+        total_sales = 0
+        orders_by_channel = {channel.value: 0 for channel in OrderChannel}
+        orders_by_outlet = {outlet.id: 0 for outlet in self.outlets.values()}
+        popular_items = {}
+        
+        for order in self.order_history:
+            if start_date <= order.created_at <= end_date:
+                total_sales += order.total_amount
+                orders_by_channel[order.channel.value] += 1
+                orders_by_outlet[order.outlet_id] += 1
+                
+                for item in order.items:
+                    item_name = item.menu_item.name
+                    popular_items[item_name] = popular_items.get(item_name, 0) + item.quantity
+        
+        return {
+            "total_sales": total_sales,
+            "order_count": len([o for o in self.order_history if start_date <= o.created_at <= end_date]),
+            "orders_by_channel": orders_by_channel,
+            "orders_by_outlet": orders_by_outlet,
+            "popular_items": popular_items
+        }
+    
+    def generate_driver_performance_report(self) -> Dict:
+        driver_stats = {}
+        for driver in self.drivers.values():
+            driver_stats[driver.name] = {
+                "orders_completed": driver.orders_completed,
+                "rating": driver.rating,
+                "status": driver.status.value
+            }
+        return driver_stats
+    
+    def generate_inventory_report(self) -> Dict:
+        inventory_report = {}
+        for outlet in self.outlets.values():
+            low_stock = []
+            for item in outlet.inventory.values():
+                if item.quantity < item.reorder_threshold:
+                    low_stock.append(item.name)
+            
+            inventory_report[outlet.name] = {
+                "low_stock_items": low_stock,
+                "total_items": len(outlet.inventory)
+            }
+        return inventory_report
 
-<!-- Notification -->
-<div class="notification" id="notification"></div>
+# ================= DEMO =================
+def run_demo():
+    # Initialize system
+    system = RestaurantDeliverySystem()
+    system.initialize_system()
+    
+    print("\n" + "="*50)
+    print("RESTAURANT DELIVERY SYSTEM DEMO")
+    print("="*50 + "\n")
+    
+    # Create orders from different channels
+    print("\n=== Creating Orders ===")
+    order1 = system.create_order(
+        customer_id="cust1",
+        item_ids=["pizza_margherita", "burger"],
+        quantities=[1, 2],
+        channel=OrderChannel.WEB,
+        delivery_address=(40.7580, -73.9855)
+    )
+    
+    order2 = system.create_order(
+        customer_id="cust2",
+        item_ids=["pasta_carbonara"],
+        quantities=[1],
+        channel=OrderChannel.APP,
+        delivery_address=(40.7489, -73.9680)
+    )
+    
+    order3 = system.create_order(
+        customer_id="cust3",
+        item_ids=["salad", "pizza_margherita"],
+        quantities=[2, 1],
+        channel=OrderChannel.AGGREGATOR,
+        delivery_address=(40.7831, -73.9712)
+    )
+    
+    # Display real-time dashboard
+    print("\n=== Real-Time Dashboard ===")
+    dashboard = system.get_real_time_dashboard()
+    print(json.dumps(dashboard, indent=2))
+    
+    # Display driver locations
+    print("\n=== Driver Locations ===")
+    driver_locations = system.get_driver_locations()
+    print(json.dumps(driver_locations, indent=2))
+    
+    # Display order details
+    print("\n=== Order Details ===")
+    for order_id in [order1.id, order2.id, order3.id]:
+        details = system.get_order_details(order_id)
+        print(f"\nOrder {order_id}:")
+        print(json.dumps(details, indent=2))
+    
+    # Simulate time passing (orders will be processed automatically)
+    print("\n=== Processing Orders (Simulated Time) ===")
+    print("Orders are being prepared and drivers assigned...")
+    
+    # Generate reports after some time
+    import time
+    time.sleep(5)  # Wait for orders to be processed
+    
+    print("\n=== Sales Report ===")
+    sales_report = system.generate_sales_report(
+        datetime.now() - timedelta(days=1), 
+        datetime.now()
+    )
+    print(json.dumps(sales_report, indent=2))
+    
+    print("\n=== Driver Performance Report ===")
+    driver_report = system.generate_driver_performance_report()
+    print(json.dumps(driver_report, indent=2))
+    
+    print("\n=== Inventory Report ===")
+    inventory_report = system.generate_inventory_report()
+    print(json.dumps(inventory_report, indent=2))
+    
+    # Cancel an order
+    print("\n=== Cancelling an Order ===")
+    system.cancel_order(order2.id)
+    
+    # Final dashboard
+    print("\n=== Final Dashboard ===")
+    dashboard = system.get_real_time_dashboard()
+    print(json.dumps(dashboard, indent=2))
 
-<!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-<script>
-// Embedded data (from Excel)
-const DATA = __DATA_JSON__;
-const ORIGINAL_DATA = JSON.parse(JSON.stringify(DATA));
-
-// Format currency
-function formatCurrency(v){ 
-  return Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); 
-}
-
-// Show notification
-function showNotification(message, duration = 3000) {
-  const notification = document.getElementById('notification');
-  notification.textContent = message;
-  notification.classList.add('show');
-  setTimeout(() => {
-    notification.classList.remove('show');
-  }, duration);
-}
-
-// Render metrics
-function renderMetrics(){
-  document.getElementById('metricTotal').textContent = DATA.total_orders;
-  document.getElementById('metricValue').textContent = formatCurrency(DATA.total_value);
-  document.getElementById('metricVoid').textContent = DATA.void_count;
-  document.getElementById('metricVoidPct').textContent = DATA.void_pct + '%';
-  document.getElementById('generatedAt').textContent = DATA.generated_at;
-}
-
-// Status badge
-function statusBadge(order){
-  if(order.is_void && order.is_void.toLowerCase() === 'yes') {
-    return '<span class="badge-status badge-void">Void</span>';
-  }
-  return '<span class="badge-status badge-active">OK</span>';
-}
-
-// Render table
-function renderTable(rows){
-  const tbody = document.getElementById('ordersTbody');
-  tbody.innerHTML = '';
-  rows.forEach(r=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${r.order_no}</td>
-      <td>${r.date}</td>
-      <td>${r.branch}</td>
-      <td>${r.customer_name}</td>
-      <td>${r.agent_name}</td>
-      <td>${r.order_type}</td>
-      <td>${formatCurrency(r.amount)}</td>
-      <td>${r.area}</td>
-      <td>${statusBadge(r)}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-// Render by branch
-function renderByBranch(){
-  const container = document.getElementById('byBranch');
-  container.innerHTML = '';
-  DATA.by_branch.forEach(b=>{
-    const el = document.createElement('div');
-    el.className='d-flex justify-content-between py-1 border-bottom';
-    el.innerHTML = `<div class="text-muted">${b.branch}</div><div><strong>${b.orders}</strong> • AED ${formatCurrency(b.value)}</div>`;
-    container.appendChild(el);
-  });
-}
-
-// Render by agent
-function renderByAgent(){
-  const container = document.getElementById('byAgent');
-  container.innerHTML = '';
-  DATA.by_agent.forEach(a=>{
-    const el = document.createElement('div');
-    el.className='d-flex justify-content-between py-1 border-bottom';
-    el.innerHTML = `<div class="text-muted">${a.agent_name}</div><div><strong>${a.orders}</strong> • AED ${formatCurrency(a.value)}</div>`;
-    container.appendChild(el);
-  });
-}
-
-// Render by type
-function renderByType(){
-  const container = document.getElementById('byType');
-  container.innerHTML = '';
-  DATA.by_type.forEach(t=>{
-    const el = document.createElement('div');
-    el.className='d-flex justify-content-between py-1 border-bottom';
-    el.innerHTML = `<div class="text-muted">${t.order_type}</div><div><strong>${t.orders}</strong> • AED ${formatCurrency(t.value)}</div>`;
-    container.appendChild(el);
-  });
-}
-
-// Apply filters
-function applyFilters(){
-  const searchTerm = document.getElementById('search').value.toLowerCase().trim();
-  const activeFilter = Array.from(document.querySelectorAll('.filter-pill.active')).map(x=>x.dataset.filter)[0] || 'all';
-  const startDate = document.getElementById('startDate').value;
-  const endDate = document.getElementById('endDate').value;
-  const branch = document.getElementById('branchFilter').value;
-  const agent = document.getElementById('agentFilter').value;
-  const type = document.getElementById('typeFilter').value;
-  const voidChecked = document.getElementById('voidCheck').checked;
-  
-  let rows = ORIGINAL_DATA.orders.slice();
-  
-  // Search filter
-  if(searchTerm) {
-    rows = rows.filter(r=> JSON.stringify(r).toLowerCase().includes(searchTerm));
-  }
-  
-  // Type filters
-  if(activeFilter === 'delivery') rows = rows.filter(r=>r.order_type && r.order_type.toLowerCase().includes('delivery'));
-  if(activeFilter === 'pickup') rows = rows.filter(r=>r.order_type && r.order_type.toLowerCase().includes('pickup'));
-  if(activeFilter === 'void') rows = rows.filter(r=> r.is_void && r.is_void.toLowerCase() === 'yes' );
-  
-  // Date range filter
-  if(startDate) {
-    rows = rows.filter(r => r.date >= startDate);
-  }
-  if(endDate) {
-    rows = rows.filter(r => r.date <= endDate);
-  }
-  
-  // Branch filter
-  if(branch) {
-    rows = rows.filter(r => r.branch === branch);
-  }
-  
-  // Agent filter
-  if(agent) {
-    rows = rows.filter(r => r.agent_name === agent);
-  }
-  
-  // Order type filter
-  if(type) {
-    rows = rows.filter(r => r.order_type === type);
-  }
-  
-  // Void orders filter
-  if(voidChecked) {
-    rows = rows.filter(r => r.is_void && r.is_void.toLowerCase() === 'yes');
-  }
-  
-  // Update metrics based on filtered data
-  DATA.total_orders = rows.length;
-  DATA.total_value = rows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
-  DATA.void_count = rows.filter(r => r.is_void && r.is_void.toLowerCase() === 'yes').length;
-  DATA.void_pct = rows.length > 0 ? round((DATA.void_count / rows.length) * 100, 2) : 0;
-  
-  renderMetrics();
-  renderTable(rows);
-}
-
-// Round function
-function round(value, decimals) {
-  return Number(Math.round(value + 'e' + decimals) + 'e-' + decimals);
-}
-
-// Export to CSV
-function exportToCSV() {
-  const rows = document.getElementById('ordersTbody').querySelectorAll('tr');
-  let csv = 'Order No,Date,Branch,Customer,Agent,Type,Amount,Area,Status\\n';
-  
-  rows.forEach(tr => {
-    const tds = tr.querySelectorAll('td');
-    const row = [
-      tds[0].textContent,
-      tds[1].textContent,
-      tds[2].textContent,
-      tds[3].textContent,
-      tds[4].textContent,
-      tds[5].textContent,
-      tds[6].textContent,
-      tds[7].textContent,
-      tds[8].textContent.trim()
-    ];
-    csv += row.map(cell => `"${cell}"`).join(',') + '\\n';
-  });
-  
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
-  link.setAttribute('download', `orders_export_${new Date().toISOString().slice(0,10)}.csv`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  showNotification('CSV export successful!');
-}
-
-// Export to Excel
-function exportToExcel() {
-  // Create a simple Excel-like table using HTML
-  const table = document.getElementById('ordersTable');
-  const html = table.outerHTML;
-  
-  const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `orders_export_${new Date().toISOString().slice(0,10)}.xls`;
-  link.click();
-  showNotification('Excel export successful!');
-}
-
-// Export to PDF
-function exportToPDF() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  
-  // Add title
-  doc.setFontSize(18);
-  doc.text('Crispy Chicken Orders Report', 14, 15);
-  
-  // Add date
-  doc.setFontSize(10);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 25);
-  
-  // Add table
-  const tableRows = document.querySelectorAll('#ordersTable tbody tr');
-  const tableData = Array.from(tableRows).map(tr => {
-    return Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
-  });
-  
-  doc.autoTable({
-    head: [['Order No', 'Date', 'Branch', 'Customer', 'Agent', 'Type', 'Amount', 'Area', 'Status']],
-    body: tableData,
-    startY: 30,
-    theme: 'grid',
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [122, 90, 255] }
-  });
-  
-  doc.save(`orders_report_${new Date().toISOString().slice(0,10)}.pdf`);
-  showNotification('PDF export successful!');
-}
-
-// Reset all filters
-function resetFilters() {
-  document.getElementById('search').value = '';
-  document.getElementById('startDate').value = '';
-  document.getElementById('endDate').value = '';
-  document.getElementById('branchFilter').value = '';
-  document.getElementById('agentFilter').value = '';
-  document.getElementById('typeFilter').value = '';
-  document.getElementById('voidCheck').checked = false;
-  
-  // Reset filter pills
-  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-  document.querySelector('.filter-pill[data-filter="all"]').classList.add('active');
-  
-  // Reset data to original
-  DATA.total_orders = ORIGINAL_DATA.total_orders;
-  DATA.total_value = ORIGINAL_DATA.total_value;
-  DATA.void_count = ORIGINAL_DATA.void_count;
-  DATA.void_pct = ORIGINAL_DATA.void_pct;
-  
-  renderMetrics();
-  renderTable(ORIGINAL_DATA.orders);
-  renderByBranch();
-  renderByAgent();
-  renderByType();
-  showNotification('Filters reset successfully!');
-}
-
-// Event Listeners
-document.addEventListener('DOMContentLoaded', function() {
-  // Set date range
-  document.getElementById('startDate').value = DATA.min_date.slice(0,10);
-  document.getElementById('endDate').value = DATA.max_date.slice(0,10);
-  
-  // Initialize dashboard
-  renderMetrics();
-  renderTable(DATA.orders);
-  renderByBranch();
-  renderByAgent();
-  renderByType();
-  
-  // Dock item clicks
-  document.getElementById('dashboardBtn').addEventListener('click', function() {
-    this.classList.add('active');
-    document.getElementById('filtersBtn').classList.remove('active');
-    document.getElementById('exportBtn').classList.remove('active');
-    document.getElementById('settingsBtn').classList.remove('active');
-  });
-  
-  document.getElementById('filtersBtn').addEventListener('click', function() {
-    this.classList.add('active');
-    document.getElementById('sidebar').classList.add('active');
-    document.getElementById('dashboardBtn').classList.remove('active');
-    document.getElementById('exportBtn').classList.remove('active');
-    document.getElementById('settingsBtn').classList.remove('active');
-  });
-  
-  document.getElementById('exportBtn').addEventListener('click', function() {
-    this.classList.add('active');
-    document.getElementById('sidebar').classList.add('active');
-    document.getElementById('dashboardBtn').classList.remove('active');
-    document.getElementById('filtersBtn').classList.remove('active');
-    document.getElementById('settingsBtn').classList.remove('active');
-  });
-  
-  document.getElementById('settingsBtn').addEventListener('click', function() {
-    this.classList.add('active');
-    document.getElementById('dashboardBtn').classList.remove('active');
-    document.getElementById('filtersBtn').classList.remove('active');
-    document.getElementById('exportBtn').classList.remove('active');
-  });
-  
-  // Sidebar controls
-  document.getElementById('closeSidebar').addEventListener('click', function() {
-    document.getElementById('sidebar').classList.remove('active');
-  });
-  
-  document.getElementById('mobileMenuBtn').addEventListener('click', function() {
-    document.getElementById('sidebar').classList.add('active');
-  });
-  
-  // Filter controls
-  document.getElementById('search').addEventListener('input', applyFilters);
-  document.getElementById('startDate').addEventListener('change', applyFilters);
-  document.getElementById('endDate').addEventListener('change', applyFilters);
-  document.getElementById('branchFilter').addEventListener('change', applyFilters);
-  document.getElementById('agentFilter').addEventListener('change', applyFilters);
-  document.getElementById('typeFilter').addEventListener('change', applyFilters);
-  document.getElementById('voidCheck').addEventListener('change', applyFilters);
-  
-  // Filter pills
-  document.querySelectorAll('.filter-pill').forEach(pill => {
-    pill.addEventListener('click', function() {
-      document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-      this.classList.add('active');
-      applyFilters();
-    });
-  });
-  
-  // Export buttons
-  document.getElementById('exportCSV').addEventListener('click', exportToCSV);
-  document.getElementById('exportExcel').addEventListener('click', exportToExcel);
-  document.getElementById('exportPDF').addEventListener('click', exportToPDF);
-  
-  // Reset button
-  document.getElementById('resetFilters').addEventListener('click', resetFilters);
-  
-  // Refresh button
-  document.getElementById('refreshDataBtn').addEventListener('click', function() {
-    resetFilters();
-    showNotification('Data refreshed!');
-  });
-  
-  // Dock refresh button
-  document.getElementById('refreshBtn').addEventListener('click', function() {
-    resetFilters();
-    showNotification('Data refreshed!');
-  });
-});
-</script>
-</body>
-</html>
-"""
-
-# Prepare options for dropdowns
-branch_options = "\n".join([f'<option value="{branch}">{branch}</option>' for branch in data['branches']])
-agent_options = "\n".join([f'<option value="{agent}">{agent}</option>' for agent in data['agents']])
-type_options = "\n".join([f'<option value="{order_type}">{order_type}</option>' for order_type in data['order_types']])
-
-# Replace placeholders in template
-html_content = html_template.replace("__BRANCH_OPTIONS__", branch_options)
-html_content = html_content.replace("__AGENT_OPTIONS__", agent_options)
-html_content = html_content.replace("__TYPE_OPTIONS__", type_options)
-html_content = html_content.replace("__DATA_JSON__", json.dumps(data))
-
-# Write to file
-out_path = Path("/mnt/data/order_management_dashboard.html")
-out_path.write_text(html_content, encoding="utf-8")
-
-print(f"Order Management Dashboard created successfully: {str(out_path)}")
+if __name__ == "__main__":
+    run_demo()
