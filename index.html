@@ -733,6 +733,116 @@
         .column-toggle input {
             margin-right: 5px;
         }
+        
+        /* Delayed Orders Alert */
+        .delayed-orders-alert {
+            background: linear-gradient(135deg, rgba(255, 0, 64, 0.2), rgba(255, 153, 0, 0.2));
+            border-left: 4px solid var(--danger);
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 0, 64, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 0, 64, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 0, 64, 0); }
+        }
+        
+        .delayed-orders-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .delayed-orders-header i {
+            font-size: 1.5rem;
+            color: var(--danger);
+            margin-right: 10px;
+        }
+        
+        .delayed-orders-header h3 {
+            margin: 0;
+            color: var(--danger);
+        }
+        
+        .delayed-orders-count {
+            background-color: var(--danger);
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .delayed-order-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .delayed-order-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            transform: translateX(5px);
+        }
+        
+        .delayed-order-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: rgba(255, 0, 64, 0.2);
+            color: var(--danger);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        
+        .delayed-order-content {
+            flex-grow: 1;
+        }
+        
+        .delayed-order-title {
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+        
+        .delayed-order-agent {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .delayed-order-time {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .delayed-order-action {
+            margin-left: 10px;
+        }
+        
+        .delayed-order-action button {
+            background-color: rgba(255, 0, 64, 0.2);
+            color: var(--danger);
+            border: 1px solid rgba(255, 0, 64, 0.5);
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .delayed-order-action button:hover {
+            background-color: rgba(255, 0, 64, 0.4);
+        }
     </style>
 </head>
 <body>
@@ -786,6 +896,18 @@
         
         <!-- Dashboard Tab -->
         <div class="tab-content active" id="dashboard-tab">
+            <!-- Delayed Orders Alert -->
+            <div class="glass-card delayed-orders-alert" id="delayedOrdersAlert" style="display: none;">
+                <div class="delayed-orders-header">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h3>Delayed Orders Alert</h3>
+                    <div class="delayed-orders-count" id="delayedOrdersCount">0</div>
+                </div>
+                <div id="delayedOrdersList">
+                    <!-- Delayed orders will be dynamically added here -->
+                </div>
+            </div>
+            
             <!-- Metrics Section -->
             <div class="row mb-4">
                 <div class="col-xl-3 col-lg-6 col-md-6 mb-3">
@@ -1271,6 +1393,12 @@
                                 Enable Animations
                             </label>
                         </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="delayedOrdersAlertToggle" checked>
+                            <label class="form-check-label" for="delayedOrdersAlertToggle">
+                                Enable Delayed Orders Alert
+                            </label>
+                        </div>
                     </div>
                     <div class="col-md-6 mb-4">
                         <label for="refreshInterval" class="form-label">Refresh Interval (seconds)</label>
@@ -1279,6 +1407,14 @@
                             <option value="60" selected>1 minute</option>
                             <option value="300">5 minutes</option>
                             <option value="600">10 minutes</option>
+                        </select>
+                        
+                        <label for="alertThreshold" class="form-label mt-3">Alert Threshold (minutes)</label>
+                        <select class="form-select" id="alertThreshold">
+                            <option value="30">30 minutes</option>
+                            <option value="60" selected>1 hour</option>
+                            <option value="120">2 hours</option>
+                            <option value="180">3 hours</option>
                         </select>
                     </div>
                 </div>
@@ -1302,6 +1438,7 @@
         let filteredData = [];
         let charts = {};
         let visibleColumns = {};
+        let delayedOrdersInterval;
         
         // DOM elements
         const fileUpload = document.getElementById('fileUpload');
@@ -1321,6 +1458,9 @@
         const sidebarMenu = document.querySelectorAll('.sidebar-menu a');
         const tabContents = document.querySelectorAll('.tab-content');
         const columnVisibility = document.getElementById('columnVisibility');
+        const delayedOrdersAlert = document.getElementById('delayedOrdersAlert');
+        const delayedOrdersCount = document.getElementById('delayedOrdersCount');
+        const delayedOrdersList = document.getElementById('delayedOrdersList');
         
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -1392,6 +1532,9 @@
             
             // Initialize charts
             initializeCharts();
+            
+            // Start checking for delayed orders
+            startDelayedOrdersCheck();
         });
         
         // Load sample data for demonstration
@@ -1981,6 +2124,7 @@
             renderTable();
             updateBranchTable();
             updateAgentTable();
+            checkDelayedOrders();
         }
         
         // Populate column toggles
@@ -2096,6 +2240,7 @@
                     updateBranchTable();
                     updateAgentTable();
                     updateCharts();
+                    checkDelayedOrders();
                     
                     showNotification('Excel file uploaded successfully!');
                 } catch (error) {
@@ -2688,6 +2833,82 @@
             });
         }
         
+        // Check for delayed orders
+        function checkDelayedOrders() {
+            const delayedOrdersAlertEnabled = document.getElementById('delayedOrdersAlertToggle').checked;
+            if (!delayedOrdersAlertEnabled) {
+                delayedOrdersAlert.style.display = 'none';
+                return;
+            }
+            
+            const alertThreshold = parseInt(document.getElementById('alertThreshold').value);
+            const now = new Date();
+            
+            // Find orders that are older than the threshold and still active
+            const delayedOrders = ordersData.filter(order => {
+                if (!order.date || order.status !== 'active') return false;
+                
+                const orderDate = new Date(order.date);
+                const timeDiff = now - orderDate; // Difference in milliseconds
+                const minutesDiff = Math.floor(timeDiff / 60000); // Convert to minutes
+                
+                return minutesDiff > alertThreshold;
+            });
+            
+            // Update the delayed orders alert
+            if (delayedOrders.length > 0) {
+                delayedOrdersAlert.style.display = 'block';
+                delayedOrdersCount.textContent = delayedOrders.length;
+                
+                // Clear the list
+                delayedOrdersList.innerHTML = '';
+                
+                // Add each delayed order to the list
+                delayedOrders.forEach(order => {
+                    const orderDate = new Date(order.date);
+                    const timeDiff = now - orderDate;
+                    const minutesDiff = Math.floor(timeDiff / 60000);
+                    const hoursDiff = Math.floor(minutesDiff / 60);
+                    
+                    const delayedOrderItem = document.createElement('div');
+                    delayedOrderItem.className = 'delayed-order-item';
+                    
+                    delayedOrderItem.innerHTML = `
+                        <div class="delayed-order-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="delayed-order-content">
+                            <div class="delayed-order-title">Order #${order.orderNo} - ${order.cusName}</div>
+                            <div class="delayed-order-agent">Agent: ${order.agentName}</div>
+                            <div class="delayed-order-time">Delayed by: ${hoursDiff}h ${minutesDiff % 60}m</div>
+                        </div>
+                        <div class="delayed-order-action">
+                            <button onclick="viewOrderDetails('${order.orderNo}')">View</button>
+                        </div>
+                    `;
+                    
+                    delayedOrdersList.appendChild(delayedOrderItem);
+                });
+            } else {
+                delayedOrdersAlert.style.display = 'none';
+            }
+        }
+        
+        // Start checking for delayed orders
+        function startDelayedOrdersCheck() {
+            // Check immediately
+            checkDelayedOrders();
+            
+            // Set interval to check every minute
+            delayedOrdersInterval = setInterval(checkDelayedOrders, 60000);
+        }
+        
+        // View order details (placeholder function)
+        function viewOrderDetails(orderNo) {
+            showNotification(`Viewing details for order #${orderNo}`);
+            // In a real application, this would open a modal or navigate to order details
+        }
+        
         // Export to Excel
         function exportToExcel() {
             if (filteredData.length === 0) {
@@ -3009,15 +3230,23 @@
             const autoRefresh = document.getElementById('autoRefreshToggle').checked;
             const notifications = document.getElementById('notificationsToggle').checked;
             const animations = document.getElementById('animationsToggle').checked;
+            const delayedOrdersAlert = document.getElementById('delayedOrdersAlertToggle').checked;
             const refreshInterval = document.getElementById('refreshInterval').value;
+            const alertThreshold = document.getElementById('alertThreshold').value;
             
             // In a real application, you would save these settings to a database or localStorage
             localStorage.setItem('dashboardSettings', JSON.stringify({
                 autoRefresh,
                 notifications,
                 animations,
-                refreshInterval
+                delayedOrdersAlert,
+                refreshInterval,
+                alertThreshold
             }));
+            
+            // Restart delayed orders check with new threshold
+            clearInterval(delayedOrdersInterval);
+            startDelayedOrdersCheck();
             
             showNotification('Settings saved successfully!');
         }
