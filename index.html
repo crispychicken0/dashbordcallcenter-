@@ -1,660 +1,703 @@
-<!DOCTYPE html>
-<html lang="en" dir="ltr">
+from pathlib import Path
+import pandas as pd
+import json, datetime, os
+import io
+
+# Load the Excel file
+file_path = "/mnt/data/Orders Detail Track (6).xlsx"
+df = pd.read_excel(file_path, sheet_name="Orders Detail Track")
+
+# Clean and prepare data for JSON export
+columns_map = {
+    "Order no": "order_no",
+    "Date": "date",
+    "Outlet": "branch",
+    "Cus. Name": "customer_name",
+    "Cus Phone": "phone",
+    "Address": "address",
+    "Pay Method": "pay_method",
+    "Order Total": "order_total",
+    "Dispatch Time": "dispatch_time",
+    "Dilivery Time": "delivery_time",
+    "Type": "type",
+    "Agent Name": "agent_name",
+    "Incident ID": "incident_id",
+    "Incident Description": "incident_desc",
+    "Resolved?": "resolved"
+}
+available_cols = [c for c in df.columns if c in columns_map]
+df_small = df[available_cols].rename(columns=columns_map)
+
+# Convert datelike strings to readable format
+def try_parse_date(x):
+    try:
+        return pd.to_datetime(x).isoformat()
+    except Exception:
+        return str(x)
+df_small['date'] = df_small['date'].apply(try_parse_date)
+
+# Fill NaNs for JSON cleanliness
+df_small = df_small.fillna("")
+
+# Compute metrics
+total_orders = len(df_small)
+total_value = df_small['order_total'].replace('', 0).astype(float).sum()
+
+# Calculate late orders
+def to_float_safe(v):
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+df_small['delivery_time_num'] = df_small['delivery_time'].apply(to_float_safe)
+late_count = df_small['delivery_time_num'].apply(lambda x: x is not None and x>45).sum()
+late_pct = round((late_count/total_orders)*100,2) if total_orders>0 else 0.0
+
+# Group by branch and agent
+by_branch = df_small.groupby('branch').agg(
+    orders=('order_no','count'), 
+    value=('order_total', 'sum')
+).reset_index().to_dict(orient='records')
+
+by_agent = df_small.groupby('agent_name').agg(
+    orders=('order_no','count'), 
+    value=('order_total','sum')
+).reset_index().to_dict(orient='records')
+
+# Prepare JSON data
+data = {
+    "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+    "total_orders": int(total_orders),
+    "total_value": float(total_value),
+    "late_count": int(late_count),
+    "late_pct": float(late_pct),
+    "by_branch": by_branch,
+    "by_agent": by_agent,
+    "orders": df_small.to_dict(orient='records'),
+    "branches": list(df_small['branch'].unique()),
+    "agents": list(df_small['agent_name'].unique()),
+    "min_date": df_small['date'].min(),
+    "max_date": df_small['date'].max()
+}
+
+# Create HTML dashboard with system dock
+html_template = """<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Management System</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <style>
-        :root {
-            --primary: #00ffff;
-            --secondary: #ff00ff;
-            --success: #00ff88;
-            --warning: #ffaa00;
-            --danger: #ff0040;
-            --dark: #0a0a0a;
-            --light: rgba(255, 255, 255, 0.05);
-            --glass: rgba(255, 255, 255, 0.1);
-        }
-        
-        body {
-            background: linear-gradient(135deg, var(--dark) 0%, #1a1a2e 50%, #0f0f1e 100%);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: #ffffff;
-            min-height: 100vh;
-        }
-        
-        /* Animated background */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
-                radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(255, 0, 255, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 40% 20%, rgba(255, 255, 0, 0.05) 0%, transparent 50%);
-            z-index: -1;
-            animation: bgMove 20s ease-in-out infinite;
-        }
-        
-        @keyframes bgMove {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            25% { transform: translate(-10px, -10px) rotate(1deg); }
-            50% { transform: translate(10px, -5px) rotate(-1deg); }
-            75% { transform: translate(-5px, 10px) rotate(1deg); }
-        }
-        
-        /* Header */
-        .header {
-            background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
-            backdrop-filter: blur(10px);
-            border-bottom: 2px solid var(--primary);
-            padding: 20px 0;
-            box-shadow: 0 5px 20px rgba(0, 255, 255, 0.3);
-        }
-        
-        /* Glassmorphism cards */
-        .glass-card {
-            background: var(--glass);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-            transition: all 0.3s ease;
-        }
-        
-        .glass-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0, 255, 255, 0.3);
-        }
-        
-        .section-header {
-            background: rgba(0, 255, 255, 0.1);
-            padding: 15px 20px;
-            border-radius: 15px 15px 0 0;
-            font-weight: 600;
-            margin: -20px -20px 20px -20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        /* Status badges */
-        .status-badge {
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-            display: inline-block;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-        }
-        
-        .status-delivery { 
-            background: rgba(0, 255, 255, 0.2); 
-            color: var(--primary);
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
-        }
-        
-        .status-pickup { 
-            background: rgba(255, 170, 0, 0.2); 
-            color: var(--warning);
-            box-shadow: 0 0 15px rgba(255, 170, 0, 0.5);
-        }
-        
-        .status-void { 
-            background: rgba(255, 0, 64, 0.2); 
-            color: var(--danger);
-            box-shadow: 0 0 15px rgba(255, 0, 64, 0.5);
-        }
-        
-        /* Tables */
-        .custom-table {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-        
-        .custom-table th {
-            background: rgba(0, 255, 255, 0.1);
-            color: white;
-            font-weight: 600;
-            border: none;
-            padding: 12px 15px;
-        }
-        
-        .custom-table td {
-            padding: 10px 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            vertical-align: middle;
-        }
-        
-        .custom-table tr:hover {
-            background: rgba(0, 255, 255, 0.05);
-        }
-        
-        /* Metrics */
-        .metric-card {
-            background: var(--glass);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-        
-        .metric-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0, 255, 255, 0.3);
-        }
-        
-        .metric-value {
-            font-size: 36px;
-            font-weight: bold;
-            background: linear-gradient(45deg, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
-        }
-        
-        /* Upload button */
-        .upload-btn {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: linear-gradient(45deg, var(--primary), var(--secondary));
-            border: none;
-            color: white;
-            font-size: 24px;
-            box-shadow: 0 4px 20px rgba(0, 255, 255, 0.5);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            z-index: 1000;
-        }
-        
-        .upload-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 30px rgba(0, 255, 255, 0.7);
-        }
-        
-        .upload-btn::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.2); opacity: 0.7; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        
-        /* Agent markers */
-        .agent-marker {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-left: 5px;
-        }
-        
-        .agent-ann { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
-        .agent-bhawna { background: #ff00ff; box-shadow: 0 0 10px #ff00ff; }
-        .agent-manju { background: #ffaa00; box-shadow: 0 0 10px #ffaa00; }
-        .agent-saleh { background: #00ffff; box-shadow: 0 0 10px #00ffff; }
-        .agent-melvin { background: #ff6b6b; box-shadow: 0 0 10px #ff6b6b; }
-        .agent-asmita { background: #4ecdc4; box-shadow: 0 0 10px #4ecdc4; }
-        .agent-nons { background: #45b7d1; box-shadow: 0 0 10px #45b7d1; }
-        
-        /* Branch markers */
-        .branch-marker {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-left: 5px;
-        }
-        
-        .branch-hamdan { background: #ff6b6b; box-shadow: 0 0 10px #ff6b6b; }
-        .branch-khalidiyah { background: #4ecdc4; box-shadow: 0 0 10px #4ecdc4; }
-        .branch-muroor { background: #45b7d1; box-shadow: 0 0 10px #45b7d1; }
-        .branch-shabiya { background: #f9ca24; box-shadow: 0 0 10px #f9ca24; }
-        .branch-barsha { background: #6c5ce7; box-shadow: 0 0 10px #6c5ce7; }
-        .branch-satwa { background: #a29bfe; box-shadow: 0 0 10px #a29bfe; }
-        
-        /* Buttons */
-        .btn-neon {
-            background: linear-gradient(45deg, var(--primary), var(--secondary));
-            border: none;
-            border-radius: 8px;
-            padding: 8px 16px;
-            color: white;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-neon:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 255, 255, 0.5);
-        }
-        
-        /* Notification */
-        .notification {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: rgba(0, 255, 136, 0.2);
-            border: 1px solid var(--success);
-            border-radius: 10px;
-            padding: 15px;
-            color: white;
-            box-shadow: 0 4px 20px rgba(0, 255, 136, 0.5);
-            transform: translateX(-400px);
-            transition: transform 0.3s ease;
-            z-index: 1001;
-        }
-        
-        .notification.show {
-            transform: translateX(0);
-        }
-        
-        /* Search bar */
-        .search-bar {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 25px;
-            padding: 10px 20px;
-            color: white;
-            transition: all 0.3s ease;
-        }
-        
-        .search-bar:focus {
-            background: rgba(255, 255, 255, 0.15);
-            border-color: var(--primary);
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
-            outline: none;
-        }
-        
-        .search-bar::placeholder {
-            color: rgba(255, 255, 255, 0.5);
-        }
-        
-        /* File input */
-        #fileInput {
-            display: none;
-        }
-    </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Crispy Chicken — Dashboard Management System</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+<style>
+:root{ --bg:#0b0f14; --muted:#98a0a6; --accent:#7a5aff; --glass:rgba(255,255,255,0.04); --dock:#0d1117; --dock-hover:#161b22 }
+body{background:linear-gradient(180deg,#071019,#0b0f14);color:#e9eef3;font-family:Inter,system-ui,Arial;padding:0;margin:0}
+.glass{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);backdrop-filter:blur(8px);border-radius:12px;padding:16px}
+.metric-value{font-size:1.6rem;font-weight:700;background:linear-gradient(90deg,#7a5aff,#5ef3c8);-webkit-background-clip:text;color:transparent}
+.table-fixed tbody{max-height:360px;overflow:auto;display:block}
+.table-fixed thead, .table-fixed tbody tr {display:table;width:100%;table-layout:fixed}
+.table-fixed thead {width:100%}
+.badge-status{padding:.35rem .6rem;border-radius:999px;font-weight:700}
+.badge-active{background:rgba(122,90,255,0.12);color:#dcdfff}
+.badge-late{background:rgba(255,107,107,0.12);color:#ffd6d6}
+.filter-pill{padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.02);cursor:pointer;margin-right:8px}
+.filter-pill.active{background:linear-gradient(90deg,#7a5aff,#5ef3c8);color:#041018}
+/* System Dock */
+.dock{position:fixed;bottom:0;left:0;width:100%;height:60px;background:var(--dock);border-top:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;gap:15px;z-index:1000}
+.dock-item{width:45px;height:45px;border-radius:8px;background:var(--dock-hover);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s}
+.dock-item:hover{background:var(--accent);transform:scale(1.1)}
+.dock-item.active{background:var(--accent)}
+.dock-item i{font-size:1.2rem;color:#e9eef3}
+/* Sidebar */
+.sidebar{position:fixed;top:0;left:0;width:300px;height:100%;background:var(--dock);z-index:999;transform:translateX(-100%);transition:transform 0.3s;overflow-y:auto}
+.sidebar.active{transform:translateX(0)}
+.sidebar-header{padding:20px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between}
+.sidebar-content{padding:20px}
+/* Main Content */
+.main-content{padding:20px;padding-bottom:100px}
+/* Filters */
+.filter-group{margin-bottom:20px}
+.filter-group label{display:block;margin-bottom:5px;color:#98a0a6;font-size:0.9rem}
+.filter-group select, .filter-group input{width:100%;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:#e9eef3}
+/* Export Buttons */
+.export-btn{width:100%;margin-bottom:10px;display:flex;align-items:center;gap:8px;justify-content:center;padding:10px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#e9eef3;cursor:pointer;transition:all 0.2s}
+.export-btn:hover{background:rgba(122,90,255,0.2);border-color:var(--accent)}
+/* Date Range Picker */
+.date-range{display:flex;gap:10px}
+.date-range input{flex:1}
+/* Notification */
+.notification{position:fixed;bottom:80px;right:20px;padding:15px 20px;background:rgba(122,90,255,0.9);color:white;border-radius:8px;transform:translateY(100px);transition:transform 0.3s;z-index:1001}
+.notification.show{transform:translateY(0)}
+</style>
 </head>
 <body>
-    <!-- Header -->
-    <div class="header">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <h1 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Order Management System</h1>
-                    <p class="mb-0 mt-1">Complete order tracking and analysis</p>
-                </div>
-                <div class="col-md-6 text-md-end">
-                    <div class="d-flex justify-content-md-end align-items-center">
-                        <button class="btn btn-light btn-sm me-2" onclick="refreshData()">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                        <button class="btn btn-neon" onclick="exportAllData()">
-                            <i class="fas fa-download"></i> Export All
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+<!-- System Dock -->
+<div class="dock">
+  <div class="dock-item active" id="dashboardBtn" title="Dashboard">
+    <i class="bi bi-speedometer2"></i>
+  </div>
+  <div class="dock-item" id="filtersBtn" title="Filters">
+    <i class="bi bi-funnel"></i>
+  </div>
+  <div class="dock-item" id="exportBtn" title="Export">
+    <i class="bi bi-download"></i>
+  </div>
+  <div class="dock-item" id="refreshBtn" title="Refresh Data">
+    <i class="bi bi-arrow-clockwise"></i>
+  </div>
+  <div class="dock-item" id="settingsBtn" title="Settings">
+    <i class="bi bi-gear"></i>
+  </div>
+</div>
 
-    <div class="container mt-4">
-        <!-- Metrics Overview -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="metric-card">
-                    <i class="fas fa-shopping-cart fa-2x text-primary"></i>
-                    <div class="metric-value mt-2">215</div>
-                    <div>Total Orders</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="metric-card">
-                    <i class="fas fa-truck fa-2x text-primary"></i>
-                    <div class="metric-value mt-2">189</div>
-                    <div>Delivery Orders</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="metric-card">
-                    <i class="fas fa-store fa-2x text-warning"></i>
-                    <div class="metric-value mt-2">26</div>
-                    <div>Pickup Orders</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="metric-card">
-                    <i class="fas fa-times-circle fa-2x text-danger"></i>
-                    <div class="metric-value mt-2">11</div>
-                    <div>Void Orders</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Orders Table -->
-        <div class="glass-card">
-            <div class="section-header">
-                <h3><i class="fas fa-list me-2"></i>All Orders</h3>
-            </div>
-            <div class="p-3 mb-3">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-search"></i></span>
-                            <input type="text" class="form-control search-bar" placeholder="Search orders..." id="searchInput">
-                        </div>
-                    </div>
-                    <div class="col-md-6 text-md-start">
-                        <div class="d-flex flex-wrap justify-content-md-end">
-                            <button class="btn btn-neon btn-sm me-2" onclick="filterOrders('all')">All</button>
-                            <button class="btn btn-neon btn-sm me-2" onclick="filterOrders('delivery')">Delivery</button>
-                            <button class="btn btn-neon btn-sm me-2" onclick="filterOrders('pickup')">Pickup</button>
-                            <button class="btn btn-neon btn-sm" onclick="filterOrders('void')">Void</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="custom-table">
-                <table class="table table-hover mb-0" id="ordersTable">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Order No</th>
-                            <th>Customer Name</th>
-                            <th>Phone</th>
-                            <th>Branch</th>
-                            <th>Amount</th>
-                            <th>Type</th>
-                            <th>Agent</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ordersTableBody">
-                        <!-- Orders will be populated by JavaScript -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Upload Button -->
-    <button class="upload-btn" id="uploadBtn" title="Upload Orders">
-        <i class="fas fa-cloud-upload-alt"></i>
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h5>Dashboard Controls</h5>
+    <button class="btn btn-sm btn-link text-light" id="closeSidebar">
+      <i class="bi bi-x-lg"></i>
     </button>
-    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
-
-    <!-- Notification -->
-    <div id="notification" class="notification">
-        <i class="fas fa-check-circle me-2"></i>
-        <span id="notificationText">System updated successfully</span>
+  </div>
+  <div class="sidebar-content">
+    <!-- Date Range Filter -->
+    <div class="filter-group">
+      <label>Date Range</label>
+      <div class="date-range">
+        <input type="date" id="startDate" />
+        <input type="date" id="endDate" />
+      </div>
     </div>
+    
+    <!-- Branch Filter -->
+    <div class="filter-group">
+      <label>Branch</label>
+      <select id="branchFilter">
+        <option value="">All Branches</option>
+        __BRANCH_OPTIONS__
+      </select>
+    </div>
+    
+    <!-- Agent Filter -->
+    <div class="filter-group">
+      <label>Agent</label>
+      <select id="agentFilter">
+        <option value="">All Agents</option>
+        __AGENT_OPTIONS__
+      </select>
+    </div>
+    
+    <!-- Order Type Filter -->
+    <div class="filter-group">
+      <label>Order Type</label>
+      <div>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="deliveryCheck" checked>
+          <label class="form-check-label" for="deliveryCheck">Delivery</label>
+        </div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="pickupCheck" checked>
+          <label class="form-check-label" for="pickupCheck">Pickup</label>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Late Orders Filter -->
+    <div class="filter-group">
+      <label>Late Orders</label>
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="lateCheck">
+        <label class="form-check-label" for="lateCheck">Show Only Late Orders (>45 min)</label>
+      </div>
+    </div>
+    
+    <!-- Export Options -->
+    <h6 class="mt-4 mb-3">Export Options</h6>
+    <div class="export-btn" id="exportCSV">
+      <i class="bi bi-filetype-csv"></i> Export to CSV
+    </div>
+    <div class="export-btn" id="exportExcel">
+      <i class="bi bi-filetype-excel"></i> Export to Excel
+    </div>
+    <div class="export-btn" id="exportPDF">
+      <i class="bi bi-filetype-pdf"></i> Export to PDF
+    </div>
+    
+    <!-- Reset Filters -->
+    <div class="export-btn" id="resetFilters">
+      <i class="bi bi-arrow-counterclockwise"></i> Reset All Filters
+    </div>
+  </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Sample order data
-        const ordersData = [
-            {
-                date: "2025-09-07T11:09:46.847Z",
-                orderNo: "44078",
-                customerName: "MOHAMMED",
-                phone: "545848582",
-                branch: "Barsha",
-                amount: 21,
-                type: "Delivery",
-                agent: "SALEH EMAD",
-                agentMarker: "agent-saleh",
-                branchMarker: "branch-barsha"
-            },
-            {
-                date: "2025-09-07T11:22:00.770Z",
-                orderNo: "44079",
-                customerName: "TYSAY",
-                branch: "Hamdan",
-                amount: 21,
-                type: "Delivery",
-                agent: "SALEH EMAD",
-                agentMarker: "agent-saleh",
-                branchMarker: "branch-hamdan"
-            },
-            {
-                date: "2025-09-07T11:25:56.737Z",
-                orderNo: "44080",
-                customerName: "JOMER",
-                branch: "Hamdan",
-                amount: 56,
-                type: "Delivery",
-                agent: "SALEH EMAD",
-                agentMarker: "agent-saleh",
-                branchMarker: "branch-hamdan"
-            },
-            {
-                date: "2025-09-07T11:38:45.137Z",
-                orderNo: "44081",
-                customerName: "RAMDY",
-                branch: "Barsha",
-                amount: 74,
-                type: "Delivery",
-                agent: "SALEH EMAD",
-                agentMarker: "agent-saleh",
-                branchMarker: "branch-barsha"
-            },
-            {
-                date: "2025-09-07T12:40:10.453Z",
-                orderNo: "44082",
-                customerName: "MITCHO",
-                branch: "Hamdan",
-                amount: 33,
-                type: "Delivery",
-                agent: "SALEH EMAD",
-                agentMarker: "agent-saleh",
-                branchMarker: "branch-hamdan"
-            },
-            {
-                date: "2025-09-07T12:40:15.897Z",
-                orderNo: "44083",
-                customerName: "JOHN",
-                branch: "Hamdan",
-                amount: 53,
-                type: "Delivery",
-                agent: "BHAWNA SHARMA",
-                agentMarker: "agent-bhawna",
-                branchMarker: "branch-hamdan"
-            }
-        ];
+<!-- Main Dashboard Content -->
+<div class="main-content">
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <button class="btn btn-sm btn-outline-light d-md-none" id="mobileMenuBtn">
+      <i class="bi bi-list"></i>
+    </button>
+    <h3>Crispy Chicken — Dashboard</h3>
+    <small class="text-muted">Loaded from Excel: Orders Detail Track (6).xlsx</small>
+    <div class="ms-auto d-none d-md-flex">
+      <button class="btn btn-sm btn-outline-light" id="refreshDataBtn">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </button>
+    </div>
+  </div>
+  
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="glass">
+        <div class="text-muted">Total Orders</div>
+        <div id="metricTotal" class="metric-value">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="glass">
+        <div class="text-muted">Total Value (AED)</div>
+        <div id="metricValue" class="metric-value">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="glass">
+        <div class="text-muted">Late Orders (>45m)</div>
+        <div id="metricLate" class="metric-value">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="glass">
+        <div class="text-muted">Late %</div>
+        <div id="metricLatePct" class="metric-value">-</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="glass mb-3">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <input id="search" class="form-control form-control-sm" style="max-width:360px" placeholder="Search order no, customer, branch, agent..." />
+      <div class="ms-2">
+        <span class="filter-pill active" data-filter="all">All</span>
+        <span class="filter-pill" data-filter="delivery">Delivery</span>
+        <span class="filter-pill" data-filter="pickup">Pickup</span>
+        <span class="filter-pill" data-filter="late">Late >45m</span>
+      </div>
+      <div class="ms-auto text-muted">Generated at: <span id="generatedAt"></span></div>
+    </div>
+    
+    <div class="table-responsive">
+      <table class="table table-borderless align-middle" id="ordersTable">
+        <thead>
+          <tr class="text-muted small">
+            <th style="width:120px">Order no</th>
+            <th style="width:140px">Date</th>
+            <th>Branch</th>
+            <th>Customer</th>
+            <th style="width:120px">Agent</th>
+            <th style="width:90px">Type</th>
+            <th style="width:110px">Amount</th>
+            <th style="width:110px">Delivery (min)</th>
+            <th style="width:120px">Status</th>
+          </tr>
+        </thead>
+        <tbody id="ordersTbody"></tbody>
+      </table>
+    </div>
+  </div>
+  
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="glass">
+        <h6>Orders by Branch</h6>
+        <div id="byBranch"></div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="glass">
+        <h6>Orders by Agent</h6>
+        <div id="byAgent"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
-        // Initialize the application
-        document.addEventListener('DOMContentLoaded', function() {
-            renderOrders(ordersData);
-            initializeEventListeners();
-        });
+<!-- Notification -->
+<div class="notification" id="notification"></div>
 
-        // Render orders in the table
-        function renderOrders(orders) {
-            const tbody = document.getElementById('ordersTableBody');
-            tbody.innerHTML = '';
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script>
+// Embedded data (from Excel)
+const DATA = __DATA_JSON__;
+const ORIGINAL_DATA = JSON.parse(JSON.stringify(DATA));
 
-            orders.forEach(order => {
-                const row = document.createElement('tr');
-                
-                // Format date
-                const date = new Date(order.date);
-                const formattedDate = date.toLocaleDateString('en-US');
-                const formattedTime = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                
-                // Format amount
-                const formattedAmount = order.amount.toLocaleString('en-US', { minimumFractionDigits: 2 });
-                
-                // Get status badge
-                let statusClass = 'status-delivery';
-                let statusText = 'Delivery';
-                
-                if (order.type === 'Pickup') {
-                    statusClass = 'status-pickup';
-                    statusText = 'Pickup';
-                } else if (order.type === 'void') {
-                    statusClass = 'status-void';
-                    statusText = 'Void';
-                }
+// Format currency
+function formatCurrency(v){ 
+  return Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); 
+}
 
-                row.innerHTML = `
-                    <td>
-                        <small>${formattedDate}</small>
-                        <br>
-                        <small class="text-muted">${formattedTime}</small>
-                    </td>
-                    <td>${order.orderNo}</td>
-                    <td>${order.customerName}</td>
-                    <td>${order.phone}</td>
-                    <td>
-                        ${order.branch}
-                        <span class="branch-marker ${order.branchMarker}"></span>
-                    </td>
-                    <td>${formattedAmount} AED</td>
-                    <td>
-                        <span class="status-badge ${statusClass}">${statusText}</span>
-                    </td>
-                    <td>
-                        ${order.agent}
-                        <span class="agent-marker ${order.agentMarker}"></span>
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
-        }
+// Show notification
+function showNotification(message, duration = 3000) {
+  const notification = document.getElementById('notification');
+  notification.textContent = message;
+  notification.classList.add('show');
+  setTimeout(() => {
+    notification.classList.remove('show');
+  }, duration);
+}
 
-        // Initialize event listeners
-        function initializeEventListeners() {
-            // Upload button
-            const uploadBtn = document.getElementById('uploadBtn');
-            const fileInput = document.getElementById('fileInput');
+// Render metrics
+function renderMetrics(){
+  document.getElementById('metricTotal').textContent = DATA.total_orders;
+  document.getElementById('metricValue').textContent = formatCurrency(DATA.total_value);
+  document.getElementById('metricLate').textContent = DATA.late_count;
+  document.getElementById('metricLatePct').textContent = DATA.late_pct + '%';
+  document.getElementById('generatedAt').textContent = DATA.generated_at;
+}
 
-            uploadBtn.addEventListener('click', () => {
-                fileInput.click();
-            });
+// Status badge
+function statusBadge(order){
+  const dt = order.delivery_time && order.delivery_time!='' ? parseFloat(order.delivery_time) : null;
+  if(dt && dt>45) return '<span class="badge-status badge-late">Late</span>';
+  if(order.resolved && order.resolved.toString().toLowerCase().startsWith('y')) return '<span class="badge-status badge-active">Resolved</span>';
+  return '<span class="badge-status badge-active">OK</span>';
+}
 
-            fileInput.addEventListener('change', (e) => {
-                const files = e.target.files;
-                handleFileUpload(files);
-            });
+// Render table
+function renderTable(rows){
+  const tbody = document.getElementById('ordersTbody');
+  tbody.innerHTML = '';
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.order_no}</td>
+      <td>${r.date}</td>
+      <td>${r.branch}</td>
+      <td>${r.customer_name}</td>
+      <td>${r.agent_name}</td>
+      <td>${r.type}</td>
+      <td>${formatCurrency(r.order_total)}</td>
+      <td>${r.delivery_time}</td>
+      <td>${statusBadge(r)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
 
-            // Search functionality
-            document.getElementById('searchInput').addEventListener('input', (e) => {
-                const searchTerm = e.target.value.toLowerCase();
-                const filteredOrders = ordersData.filter(order => 
-                    order.orderNo.includes(searchTerm) ||
-                    order.customerName.toLowerCase().includes(searchTerm) ||
-                    order.phone.includes(searchTerm) ||
-                    order.branch.toLowerCase().includes(searchTerm) ||
-                    order.agent.toLowerCase().includes(searchTerm)
-                );
-                renderOrders(filteredOrders);
-            });
-        }
+// Render by branch
+function renderByBranch(){
+  const container = document.getElementById('byBranch');
+  container.innerHTML = '';
+  DATA.by_branch.forEach(b=>{
+    const el = document.createElement('div');
+    el.className='d-flex justify-content-between py-1 border-bottom';
+    el.innerHTML = `<div class="text-muted">${b.branch}</div><div><strong>${b.orders}</strong> • AED ${formatCurrency(b.value)}</div>`;
+    container.appendChild(el);
+  });
+}
 
-        // Handle file upload
-        function handleFileUpload(files) {
-            if (files.length > 0) {
-                const file = files[0];
-                const reader = new FileReader();
+// Render by agent
+function renderByAgent(){
+  const container = document.getElementById('byAgent');
+  container.innerHTML = '';
+  DATA.by_agent.forEach(a=>{
+    const el = document.createElement('div');
+    el.className='d-flex justify-content-between py-1 border-bottom';
+    el.innerHTML = `<div class="text-muted">${a.agent_name}</div><div><strong>${a.orders}</strong> • AED ${formatCurrency(a.value)}</div>`;
+    container.appendChild(el);
+  });
+}
 
-                reader.onload = function(e) {
-                    try {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+// Apply filters
+function applyFilters(){
+  const searchTerm = document.getElementById('search').value.toLowerCase().trim();
+  const activeFilter = Array.from(document.querySelectorAll('.filter-pill.active')).map(x=>x.dataset.filter)[0] || 'all';
+  const startDate = document.getElementById('startDate').value;
+  const endDate = document.getElementById('endDate').value;
+  const branch = document.getElementById('branchFilter').value;
+  const agent = document.getElementById('agentFilter').value;
+  const deliveryChecked = document.getElementById('deliveryCheck').checked;
+  const pickupChecked = document.getElementById('pickupCheck').checked;
+  const lateChecked = document.getElementById('lateCheck').checked;
+  
+  let rows = ORIGINAL_DATA.orders.slice();
+  
+  // Search filter
+  if(searchTerm) {
+    rows = rows.filter(r=> JSON.stringify(r).toLowerCase().includes(searchTerm));
+  }
+  
+  // Type filters
+  if(activeFilter === 'delivery') rows = rows.filter(r=>r.type && r.type.toLowerCase().includes('delivery'));
+  if(activeFilter === 'pickup') rows = rows.filter(r=>r.type && r.type.toLowerCase().includes('pick'));
+  if(activeFilter === 'late') rows = rows.filter(r=> r.delivery_time && parseFloat(r.delivery_time)>45 );
+  
+  // Date range filter
+  if(startDate) {
+    rows = rows.filter(r => r.date >= startDate);
+  }
+  if(endDate) {
+    rows = rows.filter(r => r.date <= endDate);
+  }
+  
+  // Branch filter
+  if(branch) {
+    rows = rows.filter(r => r.branch === branch);
+  }
+  
+  // Agent filter
+  if(agent) {
+    rows = rows.filter(r => r.agent_name === agent);
+  }
+  
+  // Order type checkboxes
+  if(!deliveryChecked && !pickupChecked) {
+    rows = []; // If both unchecked, show nothing
+  } else {
+    if(!deliveryChecked) {
+      rows = rows.filter(r => r.type && !r.type.toLowerCase().includes('delivery'));
+    }
+    if(!pickupChecked) {
+      rows = rows.filter(r => r.type && !r.type.toLowerCase().includes('pick'));
+    }
+  }
+  
+  // Late orders checkbox
+  if(lateChecked) {
+    rows = rows.filter(r => r.delivery_time && parseFloat(r.delivery_time) > 45);
+  }
+  
+  // Update metrics based on filtered data
+  DATA.total_orders = rows.length;
+  DATA.total_value = rows.reduce((sum, r) => sum + (parseFloat(r.order_total) || 0), 0);
+  DATA.late_count = rows.filter(r => r.delivery_time && parseFloat(r.delivery_time) > 45).length;
+  DATA.late_pct = rows.length > 0 ? round((DATA.late_count / rows.length) * 100, 2) : 0;
+  
+  renderMetrics();
+  renderTable(rows);
+}
 
-                        // Process and display new data
-                        showNotification('Data uploaded successfully');
-                        renderOrders(jsonData);
-                    } catch (error) {
-                        showNotification('Error processing file', 'error');
-                    }
-                };
+// Round function
+function round(value, decimals) {
+  return Number(Math.round(value + 'e' + decimals) + 'e-' + decimals);
+}
 
-                reader.readAsArrayBuffer(file);
-            }
-        }
+// Export to CSV
+function exportToCSV() {
+  const rows = document.getElementById('ordersTbody').querySelectorAll('tr');
+  let csv = 'Order No,Date,Branch,Customer,Agent,Type,Amount,Delivery Time,Status\\n';
+  
+  rows.forEach(tr => {
+    const tds = tr.querySelectorAll('td');
+    const row = [
+      tds[0].textContent,
+      tds[1].textContent,
+      tds[2].textContent,
+      tds[3].textContent,
+      tds[4].textContent,
+      tds[5].textContent,
+      tds[6].textContent,
+      tds[7].textContent,
+      tds[8].textContent.trim()
+    ];
+    csv += row.map(cell => `"${cell}"`).join(',') + '\\n';
+  });
+  
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `orders_export_${new Date().toISOString().slice(0,10)}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showNotification('CSV export successful!');
+}
 
-        // Filter orders
-        function filterOrders(type) {
-            let filteredOrders = ordersData;
-            
-            if (type !== 'all') {
-                if (type === 'delivery') {
-                    filteredOrders = ordersData.filter(order => order.type === 'Delivery');
-                } else if (type === 'pickup') {
-                    filteredOrders = ordersData.filter(order => order.type === 'Pickup');
-                } else if (type === 'void') {
-                    filteredOrders = ordersData.filter(order => order.type === 'void');
-                }
-            }
-            
-            renderOrders(filteredOrders);
-            showNotification(`Filtered by: ${type === 'all' ? 'All' : type === 'delivery' ? 'Delivery' : type === 'pickup' ? 'Pickup' : 'Void'}`);
-        }
+// Export to Excel
+function exportToExcel() {
+  // Create a simple Excel-like table using HTML
+  const table = document.getElementById('ordersTable');
+  const html = table.outerHTML;
+  
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `orders_export_${new Date().toISOString().slice(0,10)}.xls`;
+  link.click();
+  showNotification('Excel export successful!');
+}
 
-        // Export all data
-        function exportAllData() {
-            const ws = XLSX.utils.json_to_sheet(ordersData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Orders');
-            XLSX.writeFile(wb, 'all_orders.xlsx');
-            showNotification('All data exported successfully');
-        }
+// Export to PDF
+function exportToPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  
+  // Add title
+  doc.setFontSize(18);
+  doc.text('Crispy Chicken Orders Report', 14, 15);
+  
+  // Add date
+  doc.setFontSize(10);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 25);
+  
+  // Add table
+  const tableRows = document.querySelectorAll('#ordersTable tbody tr');
+  const tableData = Array.from(tableRows).map(tr => {
+    return Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+  });
+  
+  doc.autoTable({
+    head: [['Order No', 'Date', 'Branch', 'Customer', 'Agent', 'Type', 'Amount', 'Delivery (min)', 'Status']],
+    body: tableData,
+    startY: 30,
+    theme: 'grid',
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [122, 90, 255] }
+  });
+  
+  doc.save(`orders_report_${new Date().toISOString().slice(0,10)}.pdf`);
+  showNotification('PDF export successful!');
+}
 
-        // Refresh data
-        function refreshData() {
-            showNotification('Refreshing data...');
-            setTimeout(() => {
-                renderOrders(ordersData);
-                showNotification('Data refreshed successfully');
-            }, 1000);
-        }
+// Reset all filters
+function resetFilters() {
+  document.getElementById('search').value = '';
+  document.getElementById('startDate').value = '';
+  document.getElementById('endDate').value = '';
+  document.getElementById('branchFilter').value = '';
+  document.getElementById('agentFilter').value = '';
+  document.getElementById('deliveryCheck').checked = true;
+  document.getElementById('pickupCheck').checked = true;
+  document.getElementById('lateCheck').checked = false;
+  
+  // Reset filter pills
+  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+  document.querySelector('.filter-pill[data-filter="all"]').classList.add('active');
+  
+  // Reset data to original
+  DATA.total_orders = ORIGINAL_DATA.total_orders;
+  DATA.total_value = ORIGINAL_DATA.total_value;
+  DATA.late_count = ORIGINAL_DATA.late_count;
+  DATA.late_pct = ORIGINAL_DATA.late_pct;
+  
+  renderMetrics();
+  renderTable(ORIGINAL_DATA.orders);
+  renderByBranch();
+  renderByAgent();
+  showNotification('Filters reset successfully!');
+}
 
-        // Show notification
-        function showNotification(message, type = 'success') {
-            const notification = document.getElementById('notification');
-            const notificationText = document.getElementById('notificationText');
-            
-            notificationText.textContent = message;
-            notification.classList.add('show');
-            
-            if (type === 'error') {
-                notification.style.background = 'rgba(255, 0, 64, 0.2)';
-                notification.style.borderColor = 'var(--danger)';
-            } else {
-                notification.style.background = 'rgba(0, 255, 136, 0.2)';
-                notification.style.borderColor = 'var(--success)';
-            }
-            
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
-        }
-    </script>
+// Event Listeners
+document.addEventListener('DOMContentLoaded', function() {
+  // Set date range
+  document.getElementById('startDate').value = DATA.min_date.slice(0,10);
+  document.getElementById('endDate').value = DATA.max_date.slice(0,10);
+  
+  // Initialize dashboard
+  renderMetrics();
+  renderTable(DATA.orders);
+  renderByBranch();
+  renderByAgent();
+  
+  // Dock item clicks
+  document.getElementById('dashboardBtn').addEventListener('click', function() {
+    this.classList.add('active');
+    document.getElementById('filtersBtn').classList.remove('active');
+    document.getElementById('exportBtn').classList.remove('active');
+    document.getElementById('settingsBtn').classList.remove('active');
+  });
+  
+  document.getElementById('filtersBtn').addEventListener('click', function() {
+    this.classList.add('active');
+    document.getElementById('sidebar').classList.add('active');
+    document.getElementById('dashboardBtn').classList.remove('active');
+    document.getElementById('exportBtn').classList.remove('active');
+    document.getElementById('settingsBtn').classList.remove('active');
+  });
+  
+  document.getElementById('exportBtn').addEventListener('click', function() {
+    this.classList.add('active');
+    document.getElementById('sidebar').classList.add('active');
+    document.getElementById('dashboardBtn').classList.remove('active');
+    document.getElementById('filtersBtn').classList.remove('active');
+    document.getElementById('settingsBtn').classList.remove('active');
+  });
+  
+  document.getElementById('settingsBtn').addEventListener('click', function() {
+    this.classList.add('active');
+    document.getElementById('dashboardBtn').classList.remove('active');
+    document.getElementById('filtersBtn').classList.remove('active');
+    document.getElementById('exportBtn').classList.remove('active');
+  });
+  
+  // Sidebar controls
+  document.getElementById('closeSidebar').addEventListener('click', function() {
+    document.getElementById('sidebar').classList.remove('active');
+  });
+  
+  document.getElementById('mobileMenuBtn').addEventListener('click', function() {
+    document.getElementById('sidebar').classList.add('active');
+  });
+  
+  // Filter controls
+  document.getElementById('search').addEventListener('input', applyFilters);
+  document.getElementById('startDate').addEventListener('change', applyFilters);
+  document.getElementById('endDate').addEventListener('change', applyFilters);
+  document.getElementById('branchFilter').addEventListener('change', applyFilters);
+  document.getElementById('agentFilter').addEventListener('change', applyFilters);
+  document.getElementById('deliveryCheck').addEventListener('change', applyFilters);
+  document.getElementById('pickupCheck').addEventListener('change', applyFilters);
+  document.getElementById('lateCheck').addEventListener('change', applyFilters);
+  
+  // Filter pills
+  document.querySelectorAll('.filter-pill').forEach(pill => {
+    pill.addEventListener('click', function() {
+      document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+      this.classList.add('active');
+      applyFilters();
+    });
+  });
+  
+  // Export buttons
+  document.getElementById('exportCSV').addEventListener('click', exportToCSV);
+  document.getElementById('exportExcel').addEventListener('click', exportToExcel);
+  document.getElementById('exportPDF').addEventListener('click', exportToPDF);
+  
+  // Reset button
+  document.getElementById('resetFilters').addEventListener('click', resetFilters);
+  
+  // Refresh button
+  document.getElementById('refreshDataBtn').addEventListener('click', function() {
+    resetFilters();
+    showNotification('Data refreshed!');
+  });
+  
+  // Dock refresh button
+  document.getElementById('refreshBtn').addEventListener('click', function() {
+    resetFilters();
+    showNotification('Data refreshed!');
+  });
+});
+</script>
 </body>
 </html>
+"""
+
+# Prepare options for dropdowns
+branch_options = "\n".join([f'<option value="{branch}">{branch}</option>' for branch in data['branches']])
+agent_options = "\n".join([f'<option value="{agent}">{agent}</option>' for agent in data['agents']])
+
+# Replace placeholders in template
+html_content = html_template.replace("__BRANCH_OPTIONS__", branch_options)
+html_content = html_content.replace("__AGENT_OPTIONS__", agent_options)
+html_content = html_content.replace("__DATA_JSON__", json.dumps(data))
+
+# Write to file
+out_path = Path("/mnt/data/dashboard_management_system.html")
+out_path.write_text(html_content, encoding="utf-8")
+
+print(f"Dashboard Management System created successfully: {str(out_path)}")
