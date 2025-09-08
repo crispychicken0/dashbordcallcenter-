@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة الطلبات 2029 - وكلاء ومطاعم</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary: #00ffff;
+            --secondary: #ff00ff;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff0040;
+            --dark: #0a0a0a;
+            --light: rgba(255, 255, 255, 0.05);
+            --glass: rgba(255, 255, 255, 0.1);
+            --neon-glow: 0 0 15px currentColor;
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--dark) 0%, #1a1a2e 50%, #0f0f1e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ffffff;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 0, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 20%, rgba(255, 255, 0, 0.05) 0%, transparent 50%);
+            z-index: -1;
+            animation: bgMove 20s ease-in-out infinite;
+        }
+        
+        @keyframes bgMove {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            25% { transform: translate(-10px, -10px) rotate(1deg); }
+            50% { transform: translate(10px, -5px) rotate(-1deg); }
+            75% { transform: translate(-5px, 10px) rotate(1deg); }
+        }
+        
+        /* Header with neon effect */
+        .header {
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
+            backdrop-filter: blur(10px);
+            border-bottom: 2px solid var(--primary);
+            color: white;
+            padding: 20px 0;
+            box-shadow: 0 5px 20px rgba(0, 255, 255, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 255, 255, 0.2) 0%, transparent 70%);
+            animation: rotate 20s linear infinite;
+        }
+        
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Glassmorphism cards */
+        .section-card {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .section-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 255, 255, 0.3);
+            border-color: rgba(0, 255, 255, 0.5);
+        }
+        
+        .section-header {
+            background: rgba(0, 255, 255, 0.1);
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px 15px 0 0;
+            font-weight: 600;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .section-header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+        }
+        
+        /* Order cards with neon effects */
+        .order-card {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            margin-bottom: 15px;
+            border-left: 4px solid;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .order-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .order-card:hover::before {
+            opacity: 1;
+        }
+        
+        .order-card:hover {
+            transform: translateX(-5px);
+            box-shadow: 0 10px 30px rgba(0, 255, 255, 0.4);
+        }
+        
+        .order-active { border-left-color: var(--primary); }
+        .order-preparing { border-left-color: var(--warning); }
+        .order-completed { border-left-color: var(--success); }
+        .order-delayed { border-left-color: var(--danger); }
+        
+        /* Status badges with neon effects */
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            display: inline-block;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        .status-active { 
+            background: rgba(0, 255, 255, 0.2); 
+            color: var(--primary);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+        
+        .status-preparing { 
+            background: rgba(255, 170, 0, 0.2); 
+            color: var(--warning);
+            box-shadow: 0 0 15px rgba(255, 170, 0, 0.5);
+        }
+        
+        .status-completed { 
+            background: rgba(0, 255, 136, 0.2); 
+            color: var(--success);
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+        }
+        
+        .status-delayed { 
+            background: rgba(255, 0, 64, 0.2); 
+            color: var(--danger);
+            box-shadow: 0 0 15px rgba(255, 0, 64, 0.5);
+        }
+        
+        /* Alert banner with neon effects */
+        .alert-banner {
+            background: rgba(255, 170, 0, 0.1);
+            border-left: 5px solid var(--warning);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 15px rgba(255, 170, 0, 0.3);
+        }
+        
+        .alert-critical {
+            background: rgba(255, 0, 64, 0.1);
+            border-left-color: var(--danger);
+            box-shadow: 0 4px 15px rgba(255, 0, 64, 0.3);
+        }
+        
+        /* Metric cards with neon effects */
+        .metric-card {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 255, 255, 0.3);
+        }
+        
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 255, 255, 0.1) 0%, transparent 70%);
+            animation: rotate 30s linear infinite;
+            z-index: -1;
+        }
+        
+        .metric-value {
+            font-size: 36px;
+            font-weight: bold;
+            margin: 10px 0;
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        
+        /* Filter section with glassmorphism */
+        .filter-section {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+        
+        /* Agent cards with neon effects */
+        .agent-card {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .agent-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 255, 255, 0.3);
+        }
+        
+        .agent-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: bold;
+            margin: 0 auto 15px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        
+        /* Map container with neon border */
+        .map-container {
+            height: 300px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Upload area with neon effects */
+        .upload-area {
+            border: 2px solid var(--primary);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: rgba(0, 255, 255, 0.05);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        
+        .upload-area:hover {
+            background: rgba(0, 255, 255, 0.1);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+        }
+        
+        .upload-area.dragover {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: var(--success);
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+        }
+        
+        /* Timeline with neon effects */
+        .timeline {
+            position: relative;
+            padding: 20px 0;
+        }
+        
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 30px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--primary), var(--secondary));
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+            padding-right: 60px;
+        }
+        
+        .timeline-dot {
+            position: absolute;
+            right: 24px;
+            top: 5px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            box-shadow: 0 0 10px currentColor;
+        }
+        
+        .dot-active { background: var(--primary); }
+        .dot-preparing { background: var(--warning); }
+        .dot-completed { background: var(--success); }
+        .dot-delayed { background: var(--danger); }
+        
+        .timeline-content {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Order action buttons with neon effects */
+        .order-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .btn-action {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-action::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .btn-action:hover::before {
+            left: 100%;
+        }
+        
+        .btn-accept {
+            background: var(--success);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+        }
+        
+        .btn-accept:hover {
+            background: #00cc6a;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 136, 0.5);
+        }
+        
+        .btn-process {
+            background: var(--warning);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 170, 0, 0.3);
+        }
+        
+        .btn-process:hover {
+            background: #e09b00;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 170, 0, 0.5);
+        }
+        
+        .btn-delay {
+            background: var(--danger);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 0, 64, 0.3);
+        }
+        
+        .btn-delay:hover {
+            background: #cc002f;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 0, 64, 0.5);
+        }
+        
+        /* Notification system with neon effects */
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            transform: translateX(-400px);
+            transition: transform 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        .notification.show {
+            transform: translateX(0);
+        }
+        
+        .notification.success {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: var(--success);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+        
+        .notification.error {
+            background: rgba(255, 0, 64, 0.2);
+            border-color: var(--danger);
+            box-shadow: 0 0 20px rgba(255, 0, 64, 0.5);
+        }
+        
+        .notification.warning {
+            background: rgba(255, 170, 0, 0.2);
+            border-color: var(--warning);
+            box-shadow: 0 0 20px rgba(255, 170, 0, 0.5);
+        }
+        
+        .notification.info {
+            background: rgba(0, 255, 255, 0.2);
+            border-color: var(--primary);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        
+        /* Pulse animation for critical alerts */
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        /* AI Insights Section */
+        .ai-insights {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+        
+        .insight-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 3px solid var(--primary);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .insight-item::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 255, 255, 0.1) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .insight-item:hover::before {
+            opacity: 1;
+        }
+        
+        .insight-item:hover {
+            transform: translateX(5px);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .insight-icon {
+            font-size: 24px;
+            margin-right: 10px;
+            filter: drop-shadow(0 0 8px currentColor);
+        }
+        
+        /* Risk meter */
+        .risk-meter {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        
+        .risk-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+            border-radius: 4px;
+            box-shadow: 0 0 10px currentColor;
+            transition: width 1s ease;
+        }
+        
+        /* Real-time tracking */
+        .tracking-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-left: 5px;
+            animation: blink 1.5s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        .tracking-online { background: var(--success); }
+        .tracking-busy { background: var(--warning); }
+        .tracking-offline { background: var(--danger); }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .metric-card {
+                margin-bottom: 15px;
+            }
+            
+            .order-actions {
+                flex-wrap: wrap;
+            }
+            
+            .btn-action {
+                flex: 1 0 45%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h1 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>نظام إدارة الطلبات 2029</h1>
+                    <p class="mb-0 mt-1">تتبع الطلبات - وكلاء ومطاعم</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <div class="d-flex justify-content-md-end align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-user-circle me-2"></i>
+                            <span>مدير النظام</span>
+                        </div>
+                        <button class="btn btn-light btn-sm neon-border" onclick="refreshDashboard()">
+                            <i class="fas fa-sync-alt"></i> تحديث
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="container mt-4">
+        <!-- AI Insights Section -->
+        <div class="ai-insights">
+            <h3 class="section-title"><i class="fas fa-brain me-2"></i>رؤى الذكاء الاصطناعي</h3>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="insight-item">
+                        <div class="d-flex align-items-center">
+                            <div class="insight-icon">🚨</div>
+                            <div>
+                                <div class="insight-title">طلب عالي المخاطرة</div>
+                                <div class="insight-desc">طلب #44196 متأخر 65 دقيقة - يتطلب تدخل فوري</div>
+                                <div class="risk-meter">
+                                    <div class="risk-bar" style="width: 95%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="insight-item">
+                        <div class="d-flex align-items-center">
+                            <div class="insight-icon">📊</div>
+                            <div>
+                                <div class="insight-title">نمط جديد</div>
+                                <div class="insight-desc">زيادة 30% في الطلبات من منطقة جزيرة ريم</div>
+                                <div class="risk-meter">
+                                    <div class="risk-bar" style="width: 70%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="insight-item">
+                        <div class="d-flex align-items-center">
+                            <div class="insight-icon">💡</div>
+                            <div>
+                                <div class="insight-title">توصية تحسينية</div>
+                                <div class="insight-desc">إضافة وكيل جديد في منطقة الكهرباء</div>
+                                <div class="risk-meter">
+                                    <div class="risk-bar" style="width: 40%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Alert Banner -->
+        <div class="alert-banner alert-critical">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h4><i class="fas fa-exclamation-triangle me-2"></i>تنبيه حرج</h4>
+                    <p>طلب #44196 متأخر 65 دقيقة - يتطلب تدخل فوري</p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <button class="btn btn-danger btn-sm" onclick="emergencyIntervention()">
+                        <i class="fas fa-phone-alt"></i> تدخل فوري
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Metrics Overview -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <i class="fas fa-shopping-cart fa-2x text-primary pulse"></i>
+                    <div class="metric-value">156</div>
+                    <div class="metric-label">الطلبات النشطة</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <i class="fas fa-clock fa-2x text-warning"></i>
+                    <div class="metric-value">12</div>
+                    <div class="metric-label">طلبات معلقة</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <i class="fas fa-check-circle fa-2x text-success"></i>
+                    <div class="metric-value">89%</div>
+                    <div class="metric-label">معدل التسليم</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <i class="fas fa-exclamation-circle fa-2x text-danger"></i>
+                    <div class="metric-value">5</div>
+                    <div class="metric-label">طلبات متأخرة</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">نوع العرض</label>
+                    <select class="form-select" id="viewType" onchange="switchView()">
+                        <option value="active">الطلبات النشطة</option>
+                        <option value="history">سجل الطلبات</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">حالة الطلب</label>
+                    <select class="form-select" id="statusFilter" onchange="filterOrders()">
+                        <option value="all">الكل</option>
+                        <option value="active">نشط</option>
+                        <option value="preparing">قيد التحضير</option>
+                        <option value="completed">مكتمل</option>
+                        <option value="delayed">متأخر</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">نطاق الوقت</label>
+                    <select class="form-select" id="timeFilter" onchange="filterOrders()">
+                        <option value="all">الكل</option>
+                        <option value="today">اليوم</option>
+                        <option value="week">هذا الأسبوع</option>
+                        <option value="month">هذا الشهر</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Orders Section -->
+        <div id="active-orders-section">
+            <div class="section-card">
+                <div class="section-header">
+                    <h3><i class="fas fa-shopping-cart me-2"></i>الطلبات النشطة</h3>
+                </div>
+                <div class="p-3">
+                    <!-- Order #44196 -->
+                    <div class="order-card order-active">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="mb-0 me-2">طلب #44196</h5>
+                                    <span class="status-badge status-active">نشط</span>
+                                    <span class="tracking-indicator tracking-offline"></span>
+                                </div>
+                                <p class="mb-1"><i class="fas fa-user me-2"></i>محمد أحمد</p>
+                                <p class="mb-1"><i class="fas fa-phone me-2"></i>0504123026</p>
+                                <p class="mb-1"><i class="fas fa-map-marker-alt me-2"></i>شارع حمدان - قرب لولو</p>
+                                <p class="mb-0"><i class="fas fa-clock me-2"></i>الوقت: 19:38 | المتوقع: 20:09</p>
+                            </div>
+                            <div class="order-actions">
+                                <button class="btn btn-action btn-process" onclick="processOrder(44196)">
+                                    <i class="fas fa-play"></i> معالجة
+                                </button>
+                                <button class="btn btn-action btn-delay" onclick="delayOrder(44196)">
+                                    <i class="fas fa-pause"></i> تأجيل
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-route me-2"></i>
+                                <span>المسافة: 2.5 كم | الوقت المتبقي: 25 دقيقة</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Order #44195 -->
+                    <div class="order-card order-preparing">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="mb-0 me-2">طلب #44195</h5>
+                                    <span class="status-badge status-preparing">قيد التحضير</span>
+                                    <span class="tracking-indicator tracking-online"></span>
+                                </div>
+                                <p class="mb-1"><i class="fas fa-user me-2"></i>برما أحمد</p>
+                                <p class="mb-1"><i class="fas fa-phone me-2"></i>0507007779</p>
+                                <p class="mb-1"><i class="fas fa-map-marker-alt me-2"></i>جزيرة ريم - شارع الأمaya</p>
+                                <p class="mb-0"><i class="fas fa-clock me-2"></i>الوقت: 19:36 | المتوقع: 20:08</p>
+                            </div>
+                            <div class="order-actions">
+                                <button class="btn btn-action btn-process" onclick="completeOrder(44195)">
+                                    <i class="fas fa-check-double"></i> إكمال
+                                </button>
+                                <button class="btn btn-action btn-delay" onclick="delayOrder(44195)">
+                                    <i class="fas fa-pause"></i> تأجيل
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-route me-2"></i>
+                                <span>المسافة: 3.2 كم | الوقت المتبقي: 32 دقيقة</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Order History Section -->
+        <div id="history-section" style="display: none;">
+            <div class="section-card">
+                <div class="section-header">
+                    <h3><i class="fas fa-history me-2"></i>سجل الطلبات</h3>
+                </div>
+                <div class="p-3">
+                    <!-- History Order #44187 -->
+                    <div class="order-card order-completed">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="mb-0 me-2">طلب #44187</h5>
+                                    <span class="status-badge status-completed">مكتمل</span>
+                                </div>
+                                <p class="mb-1"><i class="fas fa-user me-2"></i>ماريتس</p>
+                                <p class="mb-1"><i class="fas fa-phone me-2"></i>588212332</p>
+                                <p class="mb-1"><i class="fas fa-map-marker-alt me-2"></i>الكهرباء</p>
+                                <p class="mb-0"><i class="fas fa-clock me-2"></i>الوقت: 19:00 | التسليم: 19:15</p>
+                            </div>
+                            <div>
+                                <small class="text-muted">قبل ساعتين</small>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-route me-2"></i>
+                                <span>المسافة: 1.8 كم | وقت التوصيل: 15 دقيقة</span>
+                            </div>
+                            <p class="mt-2 text-muted"><small>ملاحظات: وصول سريع، العميل راضٍ</small></p>
+                        </div>
+                    </div>
+                    
+                    <!-- History Order #44251 -->
+                    <div class="order-card order-delayed">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="d-flex align-items-center mb-2">
+                                    <h5 class="mb-0 me-2">طلب #44251</h5>
+                                    <span class="status-badge status-delayed">متأخر</span>
+                                </div>
+                                <p class="mb-1"><i class="fas fa-user me-2"></i>نيفانجيلين</p>
+                                <p class="mb-1"><i class="fas fa-phone me-2"></i>0507065667</p>
+                                <p class="mb-1"><i class="fas fa-map-marker-alt me-2"></i>جزيرة ريم - شارع الأمaya</p>
+                                <p class="mb-0"><i class="fas fa-clock me-2"></i>الوقت: 22:13 | التسليم: 23:45</p>
+                            </div>
+                            <div>
+                                <small class="text-muted">قبل 3 ساعات</small>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-route me-2"></i>
+                                <span>المسافة: 4.2 كم | وقت التوصيل: 92 دقيقة</span>
+                            </div>
+                            <p class="mt-2 text-muted"><small>ملاحظات: تأخير بسبب الازدحام، تم إبلاغ العميل</small></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Agents and Restaurants Section -->
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <!-- Agents -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <h3><i class="fas fa-users me-2"></i>الوكلاء</h3>
+                    </div>
+                    <div class="p-3">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="agent-card">
+                                    <div class="agent-avatar">SA</div>
+                                    <h5>سالم إماد</h5>
+                                    <p class="mb-2"><i class="fas fa-phone me-2"></i>0502532231</p>
+                                    <p class="mb-2"><i class="fas fa-tasks me-2"></i>طلبات: 7</p>
+                                    <span class="status-badge status-active">متصل</span>
+                                    <span class="tracking-indicator tracking-online"></span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="agent-card">
+                                    <div class="agent-avatar">BH</div>
+                                    <h5>بهنا شارما</h5>
+                                    <p class="mb-2"><i class="fas fa-phone me-2"></i>0502532232</p>
+                                    <p class="mb-2"><i class="fas fa-tasks me-2"></i>طلبات: 9</p>
+                                    <span class="status-badge status-active">متصل</span>
+                                    <span class="tracking-indicator tracking-busy"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Order Timeline -->
+                <div class="section-card mt-3">
+                    <div class="section-header">
+                        <h3><i class="fas fa-history me-2"></i>سجل المتابعة</h3>
+                    </div>
+                    <div class="p-3">
+                        <div class="timeline">
+                            <div class="timeline-item">
+                                <div class="timeline-dot dot-active"></div>
+                                <div class="timeline-content">
+                                    <h6>طلب #44196</h6>
+                                    <p>طلب نشط - يتطلب متابجة</p>
+                                    <small class="text-muted">قبل 5 دقائق</small>
+                                </div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot dot-preparing"></div>
+                                <div class="timeline-content">
+                                    <h6>طلب #44195</h6>
+                                    <p>قيد التحضير - جاهز للتوصيل</p>
+                                    <small class="text-muted">قبل 10 دقائق</small>
+                                </div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot dot-completed"></div>
+                                <div class="timeline-content">
+                                    <h6>طلب #44187</h6>
+                                    <p>تم التوصيل بنجاح</p>
+                                    <small class="text-muted">قبل ساعتين</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <!-- Map Section -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <h3><i class="fas fa-map-marked-alt me-2"></i>تتبع الطلبات</h3>
+                    </div>
+                    <div class="p-3">
+                        <div id="map" class="map-container"></div>
+                    </div>
+                </div>
+                
+                <!-- Upload Section -->
+                <div class="section-card mt-3">
+                    <div class="section-header">
+                        <h3><i class="fas fa-cloud-upload-alt me-2"></i>رفع الطلبات</h3>
+                    </div>
+                    <div class="p-3">
+                        <div class="upload-area" id="uploadArea">
+                            <i class="fas fa-cloud-upload-alt fa-3x mb-3"></i>
+                            <p>اسحب وأفلت ملفات الطلبات هنا</p>
+                            <p class="text-muted">أو انقر لاختيار الملفات</p>
+                            <input type="file" id="fileInput" style="display: none;" multiple>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // Initialize map
+        let map;
+        function initMap() {
+            map = L.map('map').setView([24.4863, 54.3718], 12);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            // Add order markers
+            const orders = [
+                { id: 44196, lat: 24.4863, lng: 54.3718, status: 'active' },
+                { id: 44195, lat: 24.4900, lng: 54.3800, status: 'preparing' },
+                { id: 44187, lat: 24.4700, lng: 54.3600, status: 'completed' }
+            ];
+            
+            orders.forEach(order => {
+                const color = order.status === 'active' ? '#00ffff' : 
+                             order.status === 'preparing' ? '#ffaa00' : 
+                             order.status === 'completed' ? '#00ff88' : '#ff0040';
+                
+                L.circleMarker([order.lat, order.lng], {
+                    radius: 8,
+                    fillColor: color,
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map)
+                .bindPopup(`طلب #${order.id}<br>الحالة: ${order.status}`);
+            });
+        }
+        
+        // Initialize map when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+        });
+        
+        // Notification system
+        function showNotification(message, type = 'info') {
+            const notificationContainer = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-circle',
+                warning: 'fa-exclamation-triangle',
+                info: 'fa-info-circle'
+            };
+            
+            notification.innerHTML = `
+                <i class="fas ${icons[type]} me-2"></i>
+                ${message}
+            `;
+            
+            notificationContainer.appendChild(notification);
+            
+            // Trigger animation
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 10);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    notificationContainer.removeChild(notification);
+                }, 300);
+            }, 5000);
+        }
+        
+        // Dashboard functions
+        function refreshDashboard() {
+            showNotification('جاري تحديث لوحة التحكم...', 'info');
+            
+            // Simulate loading
+            setTimeout(() => {
+                showNotification('تم تحديث البيانات بنجاح', 'success');
+                
+                // Update metrics with random values
+                document.querySelectorAll('.metric-value').forEach(el => {
+                    if (el.textContent.includes('%')) {
+                        el.textContent = Math.floor(Math.random() * 20 + 80) + '%';
+                    } else {
+                        el.textContent = Math.floor(Math.random() * 50 + 130);
+                    }
+                });
+            }, 1500);
+        }
+        
+        function switchView() {
+            const viewType = document.getElementById('viewType').value;
+            const activeSection = document.getElementById('active-orders-section');
+            const historySection = document.getElementById('history-section');
+            
+            if (viewType === 'active') {
+                activeSection.style.display = 'block';
+                historySection.style.display = 'none';
+            } else {
+                activeSection.style.display = 'none';
+                historySection.style.display = 'block';
+            }
+            
+            showNotification(`تم التبديل إلى عرض ${viewType === 'active' ? 'الطلبات النشطة' : 'سجل الطلبات'}`, 'info');
+        }
+        
+        function filterOrders() {
+            const statusFilter = document.getElementById('statusFilter').value;
+            const timeFilter = document.getElementById('timeFilter').value;
+            
+            showNotification(`تم تطبيق الفلاتر: الحالة ${statusFilter}, الوقت ${timeFilter}`, 'info');
+            
+            // In a real application, this would filter the orders
+            console.log('Filtering orders:', { statusFilter, timeFilter });
+        }
+        
+        function processOrder(orderId) {
+            showNotification(`جاري معالجة الطلب #${orderId}`, 'info');
+            
+            // Simulate processing
+            setTimeout(() => {
+                showNotification(`تم معالجة الطلب #${orderId} بنجاح`, 'success');
+                
+                // Update order status
+                const orderCard = document.querySelector(`.order-card:has(h5:contains("${orderId}"))`);
+                if (orderCard) {
+                    orderCard.classList.remove('order-active');
+                    orderCard.classList.add('order-preparing');
+                    
+                    const statusBadge = orderCard.querySelector('.status-badge');
+                    statusBadge.classList.remove('status-active');
+                    statusBadge.classList.add('status-preparing');
+                    statusBadge.textContent = 'قيد التحضير';
+                    
+                    const trackingIndicator = orderCard.querySelector('.tracking-indicator');
+                    trackingIndicator.classList.remove('tracking-offline');
+                    trackingIndicator.classList.add('tracking-online');
+                }
+            }, 2000);
+        }
+        
+        function completeOrder(orderId) {
+            showNotification(`جاري إكمال الطلب #${orderId}`, 'info');
+            
+            // Simulate completion
+            setTimeout(() => {
+                showNotification(`تم إكمال الطلب #${orderId} بنجاح`, 'success');
+                
+                // Update order status
+                const orderCard = document.querySelector(`.order-card:has(h5:contains("${orderId}"))`);
+                if (orderCard) {
+                    orderCard.classList.remove('order-preparing');
+                    orderCard.classList.add('order-completed');
+                    
+                    const statusBadge = orderCard.querySelector('.status-badge');
+                    statusBadge.classList.remove('status-preparing');
+                    statusBadge.classList.add('status-completed');
+                    statusBadge.textContent = 'مكتمل';
+                    
+                    const trackingIndicator = orderCard.querySelector('.tracking-indicator');
+                    trackingIndicator.classList.remove('tracking-online');
+                    trackingIndicator.classList.add('tracking-offline');
+                }
+            }, 2000);
+        }
+        
+        function delayOrder(orderId) {
+            showNotification(`جاري تأجيل الطلب #${orderId}`, 'warning');
+            
+            // Simulate delay
+            setTimeout(() => {
+                showNotification(`تم تأجيل الطلب #${orderId}`, 'warning');
+                
+                // Update order status
+                const orderCard = document.querySelector(`.order-card:has(h5:contains("${orderId}"))`);
+                if (orderCard) {
+                    orderCard.classList.remove('order-active', 'order-preparing');
+                    orderCard.classList.add('order-delayed');
+                    
+                    const statusBadge = orderCard.querySelector('.status-badge');
+                    statusBadge.classList.remove('status-active', 'status-preparing');
+                    statusBadge.classList.add('status-delayed');
+                    statusBadge.textContent = 'متأخر';
+                    
+                    const trackingIndicator = orderCard.querySelector('.tracking-indicator');
+                    trackingIndicator.classList.remove('tracking-online');
+                    trackingIndicator.classList.add('tracking-offline');
+                }
+            }, 2000);
+        }
+        
+        function emergencyIntervention() {
+            showNotification('جاري تنفيذ تدخل فوري...', 'error');
+            
+            // Simulate emergency intervention
+            setTimeout(() => {
+                showNotification('تم إرسال فريق الطوارئ إلى موقع الطلب', 'success');
+                
+                // In a real application, this would trigger emergency protocols
+                console.log('Emergency intervention activated');
+            }, 3000);
+        }
+        
+        // Upload functionality
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            handleFiles(files);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            handleFiles(files);
+        });
+        
+        function handleFiles(files) {
+            showNotification(`جاري معالجة ${files.length} ملف(ات)...`, 'info');
+            
+            // Simulate file processing
+            setTimeout(() => {
+                showNotification(`تم رفع ${files.length} ملف(ات) بنجاح`, 'success');
+                
+                // In a real application, this would process the files
+                console.log('Files uploaded:', files);
+            }, 2000);
+        }
+        
+        // Initialize with welcome notification
+        window.addEventListener('load', () => {
+            showNotification('مرحباً بك في نظام إدارة الطلبات 2029', 'success');
+        });
+        
+        // Simulate real-time updates
+        setInterval(() => {
+            // Randomly update metrics
+            const metrics = document.querySelectorAll('.metric-value');
+            const randomMetric = metrics[Math.floor(Math.random() * metrics.length)];
+            
+            if (randomMetric.textContent.includes('%')) {
+                const currentValue = parseInt(randomMetric.textContent);
+                const change = Math.floor(Math.random() * 5) - 2;
+                randomMetric.textContent = Math.max(80, Math.min(100, currentValue + change)) + '%';
+            } else {
+                const currentValue = parseInt(randomMetric.textContent);
+                const change = Math.floor(Math.random() * 10) - 5;
+                randomMetric.textContent = Math.max(100, currentValue + change);
+            }
+        }, 10000); // Update every 10 seconds
+    </script>
+</body>
+</html>
