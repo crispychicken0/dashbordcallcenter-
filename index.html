@@ -1604,6 +1604,402 @@
             </main>
         </div>
     </div>
+    
+    <!-- Add Branch Modal -->
+    <div class="modal fade" id="addBranchModal" tabindex="-1" aria-labelledby="addBranchModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addBranchModalLabel">Add New Branch</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addBranchForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="branchName" class="form-label">Branch Name</label>
+                                    <input type="text" class="form-control" id="branchName" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="branchCity" class="form-label">City</label>
+                                    <select class="form-select" id="branchCity" required>
+                                        <option value="">Select City</option>
+                                        <option value="Abu Dhabi">Abu Dhabi</option>
+                                        <option value="Dubai">Dubai</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="branchArea" class="form-label">Area</label>
+                                    <input type="text" class="form-control" id="branchArea" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="branchLandline" class="form-label">Landline</label>
+                                    <input type="text" class="form-control" id="branchLandline">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="branchGoogleSite" class="form-label">Google Maps URL</label>
+                                    <input type="url" class="form-control" id="branchGoogleSite">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="branchRating" class="form-label">Rating</label>
+                                    <select class="form-select" id="branchRating">
+                                        <option value="5">5 Stars</option>
+                                        <option value="4">4 Stars</option>
+                                        <option value="3">3 Stars</option>
+                                        <option value="2">2 Stars</option>
+                                        <option value="1">1 Star</option>
+                                        <option value="0">No Rating</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="branchManagerName" class="form-label">Manager Name</label>
+                                    <input type="text" class="form-control" id="branchManagerName" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="branchManagerNumber" class="form-label">Manager Number</label>
+                                    <input type="text" class="form-control" id="branchManagerNumber" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="branchManagerEmail" class="form-label">Manager Email</label>
+                                    <input type="email" class="form-control" id="branchManagerEmail">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="branchDeliveryStatus" class="form-label">Delivery Status</label>
+                                    <select class="form-select" id="branchDeliveryStatus">
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="branchOnlineLink" class="form-label">Online Ordering Link</label>
+                                    <input type="url" class="form-control" id="branchOnlineLink">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="branchDirections" class="form-label">Directions (Lat, Lng)</label>
+                                    <input type="text" class="form-control" id="branchDirections" placeholder="24.123456, 54.123456">
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveBranch()">Save Branch</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- View Branch Modal -->
+    <div class="modal fade" id="viewBranchModal" tabindex="-1" aria-labelledby="viewBranchModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewBranchModalLabel">Branch Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="branchDetails">
+                    <!-- Branch details will be inserted here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add Agent Modal -->
+    <div class="modal fade" id="addAgentModal" tabindex="-1" aria-labelledby="addAgentModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addAgentModalLabel">Add New Agent</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addAgentForm">
+                        <div class="mb-3">
+                            <label for="agentId" class="form-label">Agent ID</label>
+                            <input type="text" class="form-control" id="agentId" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="agentName" class="form-label">Full Name</label>
+                            <input type="text" class="form-control" id="agentName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="agentPosition" class="form-label">Position</label>
+                            <select class="form-select" id="agentPosition" required>
+                                <option value="">Select Position</option>
+                                <option value="Senior Agent">Senior Agent</option>
+                                <option value="Junior Agent">Junior Agent</option>
+                                <option value="Team Leader">Team Leader</option>
+                                <option value="Manager">Manager</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="agentContact" class="form-label">Contact Number</label>
+                            <input type="text" class="form-control" id="agentContact" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="agentEmail" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="agentEmail">
+                        </div>
+                        <div class="mb-3">
+                            <label for="agentPhone" class="form-label">Phone</label>
+                            <input type="text" class="form-control" id="agentPhone">
+                        </div>
+                        <div class="mb-3">
+                            <label for="agentBranch" class="form-label">Branch</label>
+                            <select class="form-select" id="agentBranch">
+                                <option value="">Select Branch</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveAgent()">Save Agent</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add Task Modal -->
+    <div class="modal fade" id="addTaskModal" tabindex="-1" aria-labelledby="addTaskModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addTaskModalLabel">Add New Task</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addTaskForm">
+                        <div class="mb-3">
+                            <label for="taskTitle" class="form-label">Task Title</label>
+                            <input type="text" class="form-control" id="taskTitle" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="taskCategory" class="form-label">Category</label>
+                            <select class="form-select" id="taskCategory" required>
+                                <option value="">Select Category</option>
+                                <option value="training">Training</option>
+                                <option value="meeting">Meeting</option>
+                                <option value="follow-up">Follow-up</option>
+                                <option value="report">Report</option>
+                                <option value="maintenance">Maintenance</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="taskPriority" class="form-label">Priority</label>
+                            <select class="form-select" id="taskPriority" required>
+                                <option value="">Select Priority</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="taskDueDate" class="form-label">Due Date</label>
+                            <input type="date" class="form-control" id="taskDueDate" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="taskDescription" class="form-label">Description</label>
+                            <textarea class="form-control" id="taskDescription" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="taskAssignedTo" class="form-label">Assigned To</label>
+                            <select class="form-select" id="taskAssignedTo">
+                                <option value="">Select Agent</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveTask()">Save Task</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- View Task Modal -->
+    <div class="modal fade" id="viewTaskModal" tabindex="-1" aria-labelledby="viewTaskModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewTaskModalLabel">Task Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="taskDetails">
+                    <!-- Task details will be inserted here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="updateTaskBtn">Update Status</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add Call Modal -->
+    <div class="modal fade" id="addCallModal" tabindex="-1" aria-labelledby="addCallModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addCallModalLabel">Log New Call</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addCallForm">
+                        <div class="mb-3">
+                            <label for="callAgent" class="form-label">Agent</label>
+                            <select class="form-select" id="callAgent" required>
+                                <option value="">Select Agent</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="callBranch" class="form-label">Branch</label>
+                            <select class="form-select" id="callBranch" required>
+                                <option value="">Select Branch</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="callType" class="form-label">Call Type</label>
+                            <select class="form-select" id="callType" required>
+                                <option value="">Select Type</option>
+                                <option value="order">Order</option>
+                                <option value="inquiry">Inquiry</option>
+                                <option value="complaint">Complaint</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="callDuration" class="form-label">Duration (minutes)</label>
+                            <input type="number" class="form-control" id="callDuration" min="0" step="0.1" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="callOutcome" class="form-label">Outcome</label>
+                            <select class="form-select" id="callOutcome" required>
+                                <option value="">Select Outcome</option>
+                                <option value="order_placed">Order Placed</option>
+                                <option value="resolved">Resolved</option>
+                                <option value="escalated">Escalated</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="callSale" class="form-label">Sale Amount (AED)</label>
+                            <input type="number" class="form-control" id="callSale" min="0" step="0.01">
+                        </div>
+                        <div class="mb-3">
+                            <label for="callCustomer" class="form-label">Customer ID</label>
+                            <input type="text" class="form-control" id="callCustomer">
+                        </div>
+                        <div class="mb-3">
+                            <label for="callNotes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="callNotes" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveCall()">Log Call</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add Complaint Modal -->
+    <div class="modal fade" id="addComplaintModal" tabindex="-1" aria-labelledby="addComplaintModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addComplaintModalLabel">Log New Complaint</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addComplaintForm">
+                        <div class="mb-3">
+                            <label for="complaintAgent" class="form-label">Agent</label>
+                            <select class="form-select" id="complaintAgent" required>
+                                <option value="">Select Agent</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="complaintBranch" class="form-label">Branch</label>
+                            <select class="form-select" id="complaintBranch" required>
+                                <option value="">Select Branch</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="customerId" class="form-label">Customer ID</label>
+                            <input type="text" class="form-control" id="customerId" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="complaintType" class="form-label">Complaint Type</label>
+                            <select class="form-select" id="complaintType" required>
+                                <option value="">Select Type</option>
+                                <option value="delivery">Delivery Delay</option>
+                                <option value="quality">Food Quality</option>
+                                <option value="order">Order Error</option>
+                                <option value="service">Customer Service</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="complaintStatus" class="form-label">Status</label>
+                            <select class="form-select" id="complaintStatus" required>
+                                <option value="pending">Pending</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="resolved">Resolved</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="complaintDescription" class="form-label">Description</label>
+                            <textarea class="form-control" id="complaintDescription" rows="3" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="complaintDate" class="form-label">Date</label>
+                            <input type="date" class="form-control" id="complaintDate">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveComplaint()">Log Complaint</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- View Complaint Modal -->
+    <div class="modal fade" id="viewComplaintModal" tabindex="-1" aria-labelledby="viewComplaintModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewComplaintModalLabel">Complaint Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="complaintDetails">
+                    <!-- Complaint details will be inserted here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" id="resolveComplaintBtn">Resolve</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+    
     <!-- Footer -->
     <footer class="footer mt-5">
         <div class="container">
@@ -1631,7 +2027,7 @@
             </div>
         </div>
     </footer>
-    <!-- Modals remain unchanged -->
+    
     <script>
         // Initialize data structures
         let branches = [
@@ -2474,20 +2870,41 @@
         
         // Save branch
         function saveBranch() {
+            // Get form values
+            const branchName = document.getElementById('branchName').value;
+            const branchCity = document.getElementById('branchCity').value;
+            const branchArea = document.getElementById('branchArea').value;
+            const branchLandline = document.getElementById('branchLandline').value;
+            const branchGoogleSite = document.getElementById('branchGoogleSite').value;
+            const branchRating = document.getElementById('branchRating').value;
+            const branchManagerName = document.getElementById('branchManagerName').value;
+            const branchManagerNumber = document.getElementById('branchManagerNumber').value;
+            const branchManagerEmail = document.getElementById('branchManagerEmail').value;
+            const branchDeliveryStatus = document.getElementById('branchDeliveryStatus').value;
+            const branchOnlineLink = document.getElementById('branchOnlineLink').value;
+            const branchDirections = document.getElementById('branchDirections').value;
+            
+            // Validate required fields
+            if (!branchName || !branchCity || !branchArea || !branchManagerName || !branchManagerNumber) {
+                showToast('Please fill in all required fields', 'warning');
+                return;
+            }
+            
+            // Create new branch object
             const newBranch = {
-                id: Date.now(), // Generate a unique ID
-                name: document.getElementById('branchName').value,
-                city: document.getElementById('branchCity').value,
-                directions: document.getElementById('branchDirections').value,
-                area: document.getElementById('branchArea').value,
-                landline: document.getElementById('branchLandline').value,
-                googleSite: document.getElementById('branchGoogleSite').value,
-                rating: parseFloat(document.getElementById('branchRating').value),
-                managerName: document.getElementById('branchManagerName').value,
-                managerNumber: document.getElementById('branchManagerNumber').value,
-                emailAddress: document.getElementById('branchManagerEmail').value,
-                deliveryStatus: document.getElementById('branchDeliveryStatus').value,
-                onlineLink: document.getElementById('branchOnlineLink').value
+                id: Date.now(), // Generate unique ID
+                name: branchName,
+                city: branchCity,
+                directions: branchDirections,
+                area: branchArea,
+                landline: branchLandline,
+                googleSite: branchGoogleSite,
+                rating: parseFloat(branchRating),
+                managerName: branchManagerName,
+                managerNumber: branchManagerNumber,
+                emailAddress: branchManagerEmail,
+                deliveryStatus: branchDeliveryStatus,
+                onlineLink: branchOnlineLink
             };
             
             // Add to branches array
@@ -2498,6 +2915,11 @@
             
             // Update UI
             updateBranchesList();
+            updateDashboard();
+            updateBranchSelects();
+            
+            // Reset form
+            document.getElementById('addBranchForm').reset();
             
             // Close modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('addBranchModal'));
@@ -3264,6 +3686,7 @@
         
         // Save task
         function saveTask() {
+            // Get form values
             const taskTitle = document.getElementById('taskTitle').value;
             const taskCategory = document.getElementById('taskCategory').value;
             const taskPriority = document.getElementById('taskPriority').value;
@@ -3271,7 +3694,13 @@
             const taskDescription = document.getElementById('taskDescription').value;
             const taskAssignedTo = document.getElementById('taskAssignedTo').value;
             
-            // Add task
+            // Validate required fields
+            if (!taskTitle) {
+                showToast('Task title is required', 'warning');
+                return;
+            }
+            
+            // Create new task object
             const newTask = {
                 id: Date.now().toString(),
                 title: taskTitle,
@@ -3284,6 +3713,7 @@
                 created_at: new Date().toISOString().split('T')[0]
             };
             
+            // Add to tasks array
             tasks.push(newTask);
             
             // Save data
